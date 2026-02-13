@@ -1,0 +1,42 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# GCP / credentials – never commit
+.keys/
+*-key.json
+*.pem
+*.key
+credentials.json
+service-account*.json
+.env
+.env.*
+!.env.example
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+tmp/
+temp/
+.cache/
+
+# Local overrides (may contain secrets)
+*.local
+*.local.*
