@@ -29,19 +29,19 @@ This repository contains the implementation of the **Wiz Technical Exercise V4**
 ## Quick Start
 
 1. **GCP setup**  
-   Run the bootstrap script (after configuring project ID and region):
+   For the **wizdemo-487311** project, run (after `gcloud auth login`):
 
    ```bash
-   ./scripts/gcp-bootstrap.sh
+   ./scripts/setup-wizdemo-project.sh
    ```
 
-   See [docs/GCP_BOOTSTRAP.md](docs/GCP_BOOTSTRAP.md) for details.
+   This enables APIs, creates the automation service account and state bucket, and writes the key to `.keys/wiz-exercise-automation-key.json`. For other projects, set `GCP_PROJECT_ID` and run [scripts/gcp-bootstrap.sh](scripts/gcp-bootstrap.sh). See [docs/GCP_BOOTSTRAP.md](docs/GCP_BOOTSTRAP.md) for details.
 
 2. **GitHub**  
    Create the repo (e.g. from this clone), push, then enable branch protection, required reviews, status checks, Dependabot, and secret scanning. See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md).
 
 3. **Infrastructure**  
-   In the `terraform/` directory, configure the GCS backend and run `terraform init` and `terraform apply` (see later tickets).
+   In the `terraform/` directory, configure the GCS backend and run `terraform init` and `terraform apply`. See [docs/INFRASTRUCTURE_DEPLOYMENT.md](docs/INFRASTRUCTURE_DEPLOYMENT.md) for the manual deployment phase.
 
 4. **Application**  
    Build the todo app image, push to a container registry, and deploy to GKE using manifests in `kubernetes/` (see later tickets).
@@ -66,6 +66,9 @@ These are introduced for the exercise and documented in code:
 
 - [GCP Bootstrap](docs/GCP_BOOTSTRAP.md) – Enable APIs, service account, Terraform state bucket  
 - [GitHub Setup](docs/GITHUB_SETUP.md) – Repo creation and security controls  
+- [Infrastructure Deployment](docs/INFRASTRUCTURE_DEPLOYMENT.md) – Manual Terraform deploy (VPC, GKE, VM, bucket)  
+- [Flow 1 Validation](docs/VALIDATION_FLOW1.md) – Initial setup checklist  
+- [Flow 2 Validation](docs/VALIDATION_FLOW2.md) – Infrastructure deployment checklist  
 
 ## License
 

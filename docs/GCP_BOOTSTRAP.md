@@ -9,7 +9,7 @@ This guide covers activating the GCP project, enabling APIs, creating the automa
 
   ```bash
   gcloud auth login
-  gcloud config set project YOUR_PROJECT_ID
+  gcloud config set project wizdemo-487311
   ```
 
 ## 1. Verify access and list resources
@@ -17,7 +17,7 @@ This guide covers activating the GCP project, enabling APIs, creating the automa
 Confirm you can reach the project:
 
 ```bash
-gcloud projects describe YOUR_PROJECT_ID
+gcloud projects describe wizdemo-487311
 gcloud config get-value project
 ```
 
@@ -26,7 +26,7 @@ gcloud config get-value project
 From the repository root:
 
 ```bash
-export GCP_PROJECT_ID=your-cloudlabs-project-id
+export GCP_PROJECT_ID=wizdemo-487311
 export GCP_REGION=us-central1   # optional; default us-central1
 ./scripts/gcp-bootstrap.sh
 ```
@@ -65,12 +65,12 @@ The script will:
 To confirm APIs:
 
 ```bash
-gcloud services list --enabled --project=YOUR_PROJECT_ID | grep -E "compute|container|storage|logging|securitycenter"
+gcloud services list --enabled --project=wizdemo-487311 | grep -E "compute|container|storage|logging|securitycenter"
 ```
 
 To confirm the bucket:
 
 ```bash
-gsutil ls -L -b gs://YOUR_BUCKET_NAME
+gsutil ls -L -b gs://wizdemo-487311-tfstate-wiz-exercise
 # Expect "Versioning: Enabled" (or equivalent).
 ```

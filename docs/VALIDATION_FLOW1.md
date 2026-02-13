@@ -5,23 +5,24 @@ Use this checklist to confirm all acceptance criteria for the **Initial Setup & 
 ## GCP
 
 - [ ] **Authenticate and list resources**  
-  `gcloud auth list` shows an active account; `gcloud projects describe PROJECT_ID` succeeds.
+  `gcloud auth list` shows an active account; `gcloud projects describe wizdemo-487311` succeeds.
 
 - [ ] **Required APIs enabled**  
   Compute, GKE, Storage, Logging, SCC (and IAM). Run:
   ```bash
-  gcloud services list --enabled --project=PROJECT_ID | grep -E "compute|container|storage|logging|securitycenter"
+  gcloud services list --enabled --project=wizdemo-487311 | grep -E "compute|container|storage|logging|securitycenter"
   ```
 
 - [ ] **Service account exists with appropriate IAM roles**  
-  Service account `wiz-exercise-automation@PROJECT_ID.iam.gserviceaccount.com` exists and has roles used by the bootstrap script (e.g. Compute Admin, Container Admin, Storage Admin, etc.).
+  Service account `wiz-exercise-automation@wizdemo-487311.iam.gserviceaccount.com` exists and has roles used by the bootstrap script (e.g. Compute Admin, Container Admin, Storage Admin, etc.).
 
 - [ ] **Service account key stored securely**  
-  Key file is in `.keys/` or another path under `.gitignore`; not committed to git.
+  Key file is in `.keys/` or another path under `.gitignore`; not committed to git.  
+  *If org policy disables key creation:* use Application Default Credentials (`gcloud auth application-default login`); no key file needed.
 
 - [ ] **Terraform state GCS bucket with versioning**  
-  Bucket exists (e.g. `PROJECT_ID-tfstate-wiz-exercise`).  
-  `gsutil versioning get gs://BUCKET_NAME` shows versioning enabled.
+  Bucket exists (e.g. `wizdemo-487311-tfstate-wiz-exercise`).  
+  `gsutil versioning get gs://wizdemo-487311-tfstate-wiz-exercise` shows versioning enabled.
 
 ## Repository
 
@@ -48,10 +49,10 @@ Use this checklist to confirm all acceptance criteria for the **Initial Setup & 
 ```bash
 # GCP project and APIs
 gcloud config get-value project
-gcloud services list --enabled --project=YOUR_PROJECT_ID
+gcloud services list --enabled --project=wizdemo-487311
 
 # State bucket versioning
-gsutil versioning get gs://YOUR_BUCKET_NAME
+gsutil versioning get gs://wizdemo-487311-tfstate-wiz-exercise
 
 # Repo structure (from repo root)
 ls -la terraform app kubernetes scripts .github/workflows docs

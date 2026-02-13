@@ -112,3 +112,32 @@ gh api repos/:owner/:repo/branches/main/protection \
 ```
 
 Replace `:owner/:repo` with your org/repo. Add `contexts` (workflow job names) once your CI/CD workflows are defined.
+
+---
+
+## 10. Next steps: Require status checks when CI/CD exists
+
+When you add CI/CD workflows (e.g. in the CI/CD Pipelines ticket), add their **status check names** so merges to `main` wait for those checks. Use the GitHub CLI from the repo root:
+
+**Option A – Script (recommended)**
+
+```bash
+# After adding .github/workflows, use the job names as required checks (examples).
+./scripts/github-require-status-checks.sh "terraform-validate" "container-scan" "deploy"
+# Or comma-separated via env:
+REQUIRED_CHECKS="terraform-validate,container-scan,deploy" ./scripts/github-require-status-checks.sh
+```
+
+**Option B – gh api with JSON body**
+
+```bash
+# Replace JOB1, JOB2 with your workflow job names (e.g. from Actions tab).
+echo '{"required_status_checks":{"strict":true,"contexts":["JOB1","JOB2"]},"enforce_admins":false,"required_pull_request_reviews":{"required_approving_review_count":1,"dismiss_stale_reviews":false},"restrictions":null,"allow_force_pushes":false,"allow_deletions":false}' \
+  | gh api repos/$(gh repo view -q .nameWithOwner)/branches/main/protection -X PUT -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" --input -
+```
+
+To see current required checks: **Settings → Branches → main → Edit**, or run:
+
+```bash
+gh api repos/$(gh repo view -q .nameWithOwner)/branches/main/protection -q '.required_status_checks.contexts'
+```

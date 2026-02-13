@@ -63,12 +63,14 @@ else
 fi
 
 # Grant roles needed for Terraform (VPC, GKE, Compute VM, GCS, IAM, Logging, SCC)
+# projectIamAdmin required to create IAM bindings (e.g. for MongoDB VM SA).
 echo "Granting IAM roles to service account..."
 for role in \
   roles/compute.admin \
   roles/container.admin \
   roles/storage.admin \
   roles/iam.serviceAccountUser \
+  roles/resourcemanager.projectIamAdmin \
   roles/logging.configWriter \
   roles/securitycenter.admin; do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \

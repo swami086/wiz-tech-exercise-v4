@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and set your values. Do not commit terraform.tfvars.
+
+project_id = "your-cloudlabs-project-id"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+environment = "wiz-exercise"
+
+# Optional: override backup bucket name (must be globally unique)
+# backup_bucket_name = "my-unique-mongodb-backups"
