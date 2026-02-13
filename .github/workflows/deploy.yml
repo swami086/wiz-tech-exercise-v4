@@ -15,6 +15,7 @@ on:
     paths:
       - 'tasky-main/**'
       - '.github/workflows/deploy.yml'
+  workflow_dispatch:
 
 env:
   GCP_REGION: us-central1
