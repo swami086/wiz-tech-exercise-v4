@@ -8,3 +8,11 @@ environment = "wiz-exercise"
 
 # Optional: override backup bucket name (must be globally unique)
 # backup_bucket_name = "my-unique-mongodb-backups"
+
+# --- Tasky app (Application Deployment via Terraform Kubernetes provider) ---
+# Tasky is opt-in (tasky_enabled defaults to false). Enable only after supplying tasky_mongodb_uri and tasky_secret_key.
+# See docs/APPLICATION_DEPLOYMENT_TERRAFORM_K8S.md.
+# tasky_enabled       = true
+# tasky_image         = ""   # optional; defaults to REGION-docker.pkg.dev/PROJECT_ID/tasky-repo/tasky:latest
+# tasky_mongodb_uri   = "mongodb://todouser:PASSWORD@MONGO_IP:27017/tododb"
+# tasky_secret_key    = "your-jwt-secret-at-least-32-characters"

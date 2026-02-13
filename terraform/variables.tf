@@ -70,3 +70,31 @@ variable "backup_bucket_name" {
   type        = string
   default     = ""
 }
+
+# --- Tasky app (Kubernetes deployment via Terraform) ---
+
+variable "tasky_enabled" {
+  description = "Deploy Tasky app to GKE via Terraform Kubernetes provider (namespace, deployment, service, ingress, RBAC). Default false; set true only after supplying tasky_mongodb_uri and tasky_secret_key."
+  type        = bool
+  default     = false
+}
+
+variable "tasky_image" {
+  description = "Tasky container image. Defaults to REGION-docker.pkg.dev/PROJECT_ID/tasky-repo/tasky:latest when empty. Build and push with scripts/build-and-push-tasky.sh first."
+  type        = string
+  default     = ""
+}
+
+variable "tasky_mongodb_uri" {
+  description = "MongoDB connection URI for Tasky (use mongodb_vm_internal_ip). Sensitive."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "tasky_secret_key" {
+  description = "JWT secret key for Tasky (at least 32 chars). Sensitive."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

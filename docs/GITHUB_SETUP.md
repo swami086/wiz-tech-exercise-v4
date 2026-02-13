@@ -56,8 +56,7 @@ Then go to **Settings → Code and automation → Branches → Add branch protec
   - Enable.
   - **Require branches to be up to date** (recommended).
   - Add **required status checks** when they exist (e.g. from GitHub Actions):
-    - After the CI/CD ticket, add the workflow job names that must pass (e.g. `terraform-validate`, `container-scan`, `deploy`).
-    - For now you can leave the list empty; add checks once workflows are in place.
+    - The CI/CD pipelines provide: `terraform-validate`, `container-scan`, `deploy`. Add these three so merges are gated. All three run on pull requests so the checks can complete before merge (the `deploy` job on PRs runs a build-and-verify-only variant). See [CI_CD_PIPELINES.md](CI_CD_PIPELINES.md).
 - **Do not allow bypassing the above settings** (if your plan allows it).
 - **Restrict who can push to matching branches** (optional): limit to specific users/teams.
 - Save the rule.
@@ -91,7 +90,7 @@ To enable:
 - [ ] `.gitignore` excludes sensitive files (`.tfvars`, service account keys).
 - [ ] Branch protection is enabled on the default branch.
 - [ ] Required PR reviews are configured (e.g. 1 approval).
-- [ ] Required status checks are configured (add specific checks once CI/CD workflows exist).
+- [ ] Required status checks are configured (`terraform-validate`, `container-scan`, `deploy`; all run on PRs so checks complete before merge — see [CI_CD_PIPELINES.md](CI_CD_PIPELINES.md)).
 - [ ] Secret scanning is enabled (repo is public or GitHub Advanced Security is enabled).
 - [ ] Dependabot alerts are enabled.
 - [ ] Initial README documents the exercise overview.

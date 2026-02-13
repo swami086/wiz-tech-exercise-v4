@@ -1,0 +1,24 @@
+# Tasky Ingress for Wiz Technical Exercise V4
+# Exposes the app via GCP HTTP(S) Load Balancer (external).
+# GKE Ingress controller provisions the load balancer; allow 5–10 min for external IP.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tasky
+  namespace: tasky
+  labels:
+    app: tasky
+  annotations:
+    # Use GCP external Application Load Balancer
+    kubernetes.io/ingress.class: "gce"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: tasky
+                port:
+                  number: 8080

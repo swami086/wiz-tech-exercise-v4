@@ -9,3 +9,5 @@ provider "google-beta" {
   project = var.project_id
   region  = var.region
 }
+
+# Kubernetes provider is in terraform/kubernetes.tf (Application Deployment via Terraform Kubernetes Provider).

@@ -1,0 +1,7 @@
+# Namespace for Tasky app (Wiz Technical Exercise V4)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tasky
+  labels:
+    app: tasky

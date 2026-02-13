@@ -2,6 +2,7 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+terraform/tfplan
 *.tfvars
 *.tfvars.json
 .terraform/
@@ -31,6 +32,9 @@ service-account*.json
 *.swo
 .DS_Store
 Thumbs.db
+
+# Generated k8s manifests (image substituted by deploy script)
+kubernetes/*.generated.yaml
 
 # Logs and temp
 *.log

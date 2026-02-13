@@ -24,7 +24,8 @@ resource "google_storage_bucket" "mongodb_backups" {
   # lifecycle_rule { ... }
 }
 
-# Intentional: allow public read and public listing (exercise requirement)
+# Intentional misconfiguration (exercise): public read + listing.
+# Project override applied via: gcloud org-policies set-policy org-policy-allow-public-bucket.yaml --project=wizdemo-487311
 resource "google_storage_bucket_iam_member" "public_read" {
   bucket = google_storage_bucket.mongodb_backups.name
   role   = "roles/storage.objectViewer"
@@ -35,4 +36,11 @@ resource "google_storage_bucket_iam_member" "public_list" {
   bucket = google_storage_bucket.mongodb_backups.name
   role   = "roles/storage.legacyBucketReader"
   member = "allUsers"
+}
+
+# MongoDB VM service account can write backups (objectCreator) to this bucket
+resource "google_storage_bucket_iam_member" "mongodb_vm_backup_writer" {
+  bucket = google_storage_bucket.mongodb_backups.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${google_service_account.mongodb_vm.email}"
 }

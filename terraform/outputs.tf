@@ -56,3 +56,15 @@ output "vpc_name" {
   description = "VPC name"
   value       = google_compute_network.vpc.name
 }
+
+# --- Tasky app (when deployed via Terraform Kubernetes provider) ---
+
+output "tasky_namespace" {
+  description = "Kubernetes namespace for Tasky app (when tasky_enabled = true)"
+  value       = try(kubernetes_namespace_v1.tasky[0].metadata[0].name, null)
+}
+
+output "tasky_ingress_name" {
+  description = "Tasky Ingress resource name; use 'kubectl get ingress -n tasky' for external IP (takes 5–10 min)"
+  value       = try(kubernetes_ingress_v1.tasky[0].metadata[0].name, null)
+}

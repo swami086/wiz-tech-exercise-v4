@@ -1,0 +1,7 @@
+# Project-level override so allUsers can be granted on resources (e.g. GCS bucket).
+# Required for Terraform backup_bucket.tf public_read/public_list (intentional misconfiguration).
+# Apply: gcloud resource-manager org-policies set-policy org-policy-allow-public-bucket.yaml --project=wizdemo-487311
+name: projects/wizdemo-487311/policies/iam.allowedPolicyMemberDomains
+spec:
+  rules:
+    - allowAll: true

@@ -8,11 +8,13 @@ This guide covers the **manual** deployment of GCP infrastructure for the Wiz Te
 |-----------|-------------|
 | **VPC** | Custom VPC with two subnets: GKE (with pod/service secondary ranges) and VM |
 | **GKE** | Private cluster (nodes in private subnet); control plane reachable for `kubectl` |
-| **MongoDB VM** | Debian 10 (outdated), public SSH, overly permissive IAM (`roles/compute.admin`) |
+| **MongoDB VM** | Debian 10 (outdated), no external IP (SSH via IAP), overly permissive IAM (`roles/compute.admin`) |
 | **Backup bucket** | GCS bucket with public read and public listing (intentional misconfiguration) |
-| **Firewall** | SSH from `0.0.0.0/0` to VM; MongoDB (27017) from GKE only |
+| **Firewall** | SSH from `0.0.0.0/0` to VM (use IAP when VM has no external IP); MongoDB (27017) from GKE subnet and pod range only (not from internet) |
 
 MongoDB installation and backup automation are in the **MongoDB Setup & Backup Automation** ticket.
+
+**MongoDB VM network and firewall:** The VM has no external IP (SSH via IAP). After MongoDB setup, `net.bindIp` is set to the VM internal IP (and 127.0.0.1). Port 27017 is allowed only from the GKE subnet (`var.gke_subnet_cidr`) and GKE pod range (`10.1.0.0/16`); it is not exposed to the internet. Use `terraform output mongodb_vm_internal_ip` for the app connection.
 
 ## Prerequisites
 
@@ -107,10 +109,31 @@ kubectl get nodes
 
 Use `terraform output` to see cluster name, MongoDB VM internal IP, and backup bucket name.
 
+## 5a. State lock (if plan fails)
+
+If a background `terraform apply` was running, the state may be locked. Wait for that apply to finish, or if the process is gone, unlock:
+
+```bash
+terraform force-unlock LOCK_ID
+```
+
+Use the lock ID from the error message.
+
+## 5b. kubectl and GKE auth plugin
+
+To use `kubectl` with GKE you need the **gke-gcloud-auth-plugin**. Install it (e.g. `gcloud components install gke-gcloud-auth-plugin` or via [docs](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin)). Then:
+
+```bash
+gcloud container clusters get-credentials wiz-exercise-gke --region=us-central1 --project=wizdemo-487311
+kubectl get nodes
+```
+
+Wait until the cluster status is RUNNING if you see a warning.
+
 ## 6. Next steps
 
-- **MongoDB Setup & Backup Automation**: Install an outdated MongoDB on the VM, enable auth, and configure daily backups to the GCS bucket.
-- **Application Build & Deployment**: Build the todo app image, push to a registry, and deploy to GKE with `MONGO_URI` pointing at the VM internal IP.
+- **MongoDB Setup & Backup Automation**: Install an outdated MongoDB on the VM, enable auth, and configure daily backups to the GCS bucket. See **[MONGODB_SETUP_AND_BACKUP.md](MONGODB_SETUP_AND_BACKUP.md)** for step-by-step instructions. Admin password is required; SSH to the VM is via IAP (VM has no external IP). MongoDB is bound to the VM internal IP; port 27017 is allowed only from the GKE subnet (see firewall rules).
+- **Application Build & Deployment**: Build the todo app image, push to a registry, and deploy to GKE. Use **[APPLICATION_BUILD_AND_DEPLOYMENT.md](APPLICATION_BUILD_AND_DEPLOYMENT.md)** (manual kubectl) or **[APPLICATION_DEPLOYMENT_TERRAFORM_K8S.md](APPLICATION_DEPLOYMENT_TERRAFORM_K8S.md)** (Terraform Kubernetes provider).
 
 ## Troubleshooting
 

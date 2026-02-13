@@ -50,7 +50,7 @@ This repository contains the implementation of the **Wiz Technical Exercise V4**
 
 - Branch protection on the default branch  
 - Required PR reviews before merge  
-- Required status checks (CI/CD and scans)  
+- Required status checks (CI/CD and scans); see [docs/CI_CD_PIPELINES.md](docs/CI_CD_PIPELINES.md)  
 - Secret scanning enabled (public repo or GitHub Advanced Security)  
 - Dependabot alerts enabled  
 

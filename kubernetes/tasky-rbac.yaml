@@ -1,0 +1,27 @@
+# Intentional misconfiguration for Wiz Technical Exercise V4:
+# Pod service account is bound to cluster-admin (for demo/security tooling detection).
+# Do not use in production.
+# SA name "tasky" per spec so: kubectl auth can-i '*' '*' --as=system:serviceaccount:tasky:tasky
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tasky
+  namespace: tasky
+  labels:
+    app: tasky
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tasky-cluster-admin
+  labels:
+    app: tasky
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: tasky
+    namespace: tasky

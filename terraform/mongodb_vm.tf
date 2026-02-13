@@ -39,7 +39,8 @@ resource "google_compute_instance" "mongodb" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.vm.self_link
-    access_config {} # Intentional: external IP so VM is accessible via SSH from public internet
+    # No access_config: VM has no external IP; use IAP tunnel for SSH (e.g. gcloud compute ssh --tunnel-through-iap).
+    # MongoDB (27017) is reachable only from GKE subnet per firewall rules.
   }
 
   service_account {
@@ -51,6 +52,8 @@ resource "google_compute_instance" "mongodb" {
     # Block project-wide SSH keys; use IAP or instance-level keys in practice.
     # For exercise we allow SSH via firewall; keys can be added via console or later.
     block-project-ssh-keys = "false"
+    # Used by MongoDB setup/backup docs and scripts
+    mongodb-backup-bucket = google_storage_bucket.mongodb_backups.name
   }
 
   allow_stopping_for_update = true
