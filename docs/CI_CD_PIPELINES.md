@@ -8,7 +8,7 @@ All workflows live in `.github/workflows/` at the repository root.
 
 | Workflow | Jobs | Trigger | Purpose |
 |----------|------|---------|---------|
-| **`phase1.yml`** | `terraform-validate`, `container-scan`, `fix-container-vulns` (on scan failure), `deploy-gate` | Push/PR to `main` (terraform, tasky-main, or workflow) | **Phase 1 CI gates** – Terraform validate + container build/Trivy + deploy gate. On Trivy CRITICAL/HIGH failure, **fix-container-vulns** bumps base images and opens a PR (merge to apply). |
+| **`phase1.yml`** | `terraform-validate`, `container-scan`, `deploy-gate` | Push/PR to `main` (terraform, tasky-main, or workflow) | **Phase 1 CI gates** – Terraform validate + container build/Trivy + deploy gate. |
 | `terraform-validate.yml` | `terraform-validate` | Push/PR to `main` (terraform or workflow changes) | Terraform init (no backend), validate, and format check for IaC. |
 | `container-scan.yml` | `container-scan` | Push/PR to `main` (tasky-main or workflow changes) | Build Tasky image, run Trivy; **fails on CRITICAL/HIGH** vulnerabilities. Optionally uploads SARIF to the Security tab. |
 | `deploy.yml` | `deploy` | Push/PR to `main` (tasky-main or workflow changes) | **On PR:** build Tasky image and verify `wizexercise.txt` (no push). **On push to main:** same build/verify plus push to GCP Artifact Registry (`tasky-repo`) as `$SHA` and `latest`. |
@@ -16,7 +16,7 @@ All workflows live in `.github/workflows/` at the repository root.
 ## Security gating
 
 - **Terraform**: Invalid or unformatted IaC fails the `terraform-validate` job.
-- **Container**: CRITICAL or HIGH vulnerabilities in the Tasky image fail the `container-scan` job (Trivy with `exit-code: 1`, `severity: CRITICAL,HIGH`). When that job fails, the **fix-container-vulns** job runs: it bumps the Dockerfile base images (Alpine → 3.19, Golang → 1.22), pushes to a new branch, and opens a PR targeting `main`. Merge the PR when Phase 1 CI Gates pass on the branch; works with branch protection (no direct push to `main` required). Enable **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** so the fix job can create the PR.
+- **Container**: CRITICAL or HIGH vulnerabilities in the Tasky image fail the `container-scan` job (Trivy with `exit-code: 1`, `severity: CRITICAL,HIGH`). Fix by updating base images or dependencies in `tasky-main/Dockerfile` and re-running the workflow.
 - **Deploy**: On **pull requests**, the job runs a build-and-verify-only variant (no push), so the required check can complete before merge. On **push to main**, the job runs the full build, verify, and push to Artifact Registry (requires GCP credentials; see below).
 
 ## Required status checks (branch protection)
