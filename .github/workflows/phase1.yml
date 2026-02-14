@@ -1,7 +1,6 @@
 # Phase 1 CI Gates – mirrors demo-cicd-end-to-end.sh Phase 1.
 # Runs: terraform validate + container build/Trivy + deploy gate (build + wizexercise check).
-# When container-scan fails (Trivy CRITICAL/HIGH), fix-container-vulns bumps base images and pushes to re-run CI.
-# Requires: Settings → Actions → General → Workflow permissions: Read and write (so fix job can push).
+# When container-scan fails (Trivy CRITICAL/HIGH), fix-container-vulns bumps base images and opens a PR (works with branch protection).
 name: Phase 1 CI Gates
 
 on:
@@ -98,12 +97,20 @@ jobs:
     if: failure() && needs.container-scan.result == 'failure' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create fix branch
+        id: branch
+        run: |
+          BRANCH="fix/trivy-base-images-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Bump base images in Dockerfile
         run: |
@@ -115,15 +122,22 @@ jobs:
           rm -f "${DF}.bak"
           git diff --exit-code "$DF" && echo "No Dockerfile changes (already at bumped versions)" && exit 0 || true
 
-      - name: Commit and push to re-run CI
+      - name: Open PR with Dockerfile fix
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
           if ! git diff --quiet tasky-main/Dockerfile; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add tasky-main/Dockerfile
             git commit -m "fix(container): bump base images for Trivy CRITICAL/HIGH (alpine 3.19, golang 1.22)"
-            git push
-            echo "Pushed fix; workflow will re-run on the new commit."
+            git push -u origin "$BRANCH"
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "fix(container): bump base images for Trivy CRITICAL/HIGH" \
+              --body "Automated PR from fix-container-vulns after container-scan failed (Trivy CRITICAL/HIGH). Bumps Alpine 3.17.0 → 3.19, Golang 1.19 → 1.22. Merge when Phase 1 CI Gates pass on this branch."
+            echo "PR created; merge it to apply the fix and re-run CI on main."
           else
             echo "Dockerfile unchanged; cannot auto-fix further. Fix CVEs manually (base image or dependencies)."
           fi

@@ -6,8 +6,9 @@ This document describes the GitHub Actions CI/CD pipelines for the Wiz Technical
 
 All workflows live in `.github/workflows/` at the repository root.
 
-| Workflow | Job name | Trigger | Purpose |
-|----------|----------|---------|---------|
+| Workflow | Jobs | Trigger | Purpose |
+|----------|------|---------|---------|
+| **`phase1.yml`** | `terraform-validate`, `container-scan`, `fix-container-vulns` (on scan failure), `deploy-gate` | Push/PR to `main` (terraform, tasky-main, or workflow) | **Phase 1 CI gates** – Terraform validate + container build/Trivy + deploy gate. On Trivy CRITICAL/HIGH failure, **fix-container-vulns** bumps base images and opens a PR (merge to apply). |
 | `terraform-validate.yml` | `terraform-validate` | Push/PR to `main` (terraform or workflow changes) | Terraform init (no backend), validate, and format check for IaC. |
 | `container-scan.yml` | `container-scan` | Push/PR to `main` (tasky-main or workflow changes) | Build Tasky image, run Trivy; **fails on CRITICAL/HIGH** vulnerabilities. Optionally uploads SARIF to the Security tab. |
 | `deploy.yml` | `deploy` | Push/PR to `main` (tasky-main or workflow changes) | **On PR:** build Tasky image and verify `wizexercise.txt` (no push). **On push to main:** same build/verify plus push to GCP Artifact Registry (`tasky-repo`) as `$SHA` and `latest`. |
@@ -15,26 +16,37 @@ All workflows live in `.github/workflows/` at the repository root.
 ## Security gating
 
 - **Terraform**: Invalid or unformatted IaC fails the `terraform-validate` job.
-- **Container**: CRITICAL or HIGH vulnerabilities in the Tasky image fail the `container-scan` job (Trivy with `exit-code: 1`, `severity: CRITICAL,HIGH`).
+- **Container**: CRITICAL or HIGH vulnerabilities in the Tasky image fail the `container-scan` job (Trivy with `exit-code: 1`, `severity: CRITICAL,HIGH`). When that job fails, the **fix-container-vulns** job runs: it bumps the Dockerfile base images (Alpine → 3.19, Golang → 1.22), pushes to a new branch, and opens a PR targeting `main`. Merge the PR when Phase 1 CI Gates pass on the branch; works with branch protection (no direct push to `main` required).
 - **Deploy**: On **pull requests**, the job runs a build-and-verify-only variant (no push), so the required check can complete before merge. On **push to main**, the job runs the full build, verify, and push to Artifact Registry (requires GCP credentials; see below).
 
 ## Required status checks (branch protection)
 
-To enforce that all three jobs pass before merging into `main`:
+**Option A – Phase 1 workflow (single entry point):**  
+Use `phase1.yml` to run all Phase 1 gates in one workflow. Add these as required checks:
+- `terraform-validate` (from Phase 1 CI Gates)
+- `container-scan` (from Phase 1 CI Gates)
+- `deploy-gate` (from Phase 1 CI Gates)
+
+**Option B – Individual workflows:**  
+Add the jobs from the separate workflows:
+- `terraform-validate`
+- `container-scan`
+- `deploy`
 
 1. Go to **Settings → Code and automation → Branches → Branch protection rule for `main`**.
-2. Under **Require status checks to pass before merging**, add:
-   - `terraform-validate`
-   - `container-scan`
-   - `deploy`
+2. Under **Require status checks to pass before merging**, add the checks above.
 
 Or use the script from the repo root (requires `gh` and `jq`):
 
 ```bash
+# Phase 1 consolidated
+./scripts/github-require-status-checks.sh "terraform-validate" "container-scan" "deploy-gate"
+
+# Or individual workflows
 ./scripts/github-require-status-checks.sh "terraform-validate" "container-scan" "deploy"
 ```
 
-All three checks run on pull requests (path filters apply), so they complete on PRs instead of remaining in an "Expected" state. The `deploy` job on PRs performs pre-merge build and `wizexercise.txt` validation only; the full push runs after merge on push to `main`.
+All checks run on pull requests (path filters apply), so they complete on PRs instead of remaining in an "Expected" state. The `deploy` job on PRs performs pre-merge build and `wizexercise.txt` validation only; the full push runs after merge on push to `main`.
 
 ## Secrets and variables
 
@@ -78,3 +90,5 @@ This reduces unnecessary runs when only docs or scripts change.
 - [GITHUB_SETUP.md](GITHUB_SETUP.md) – Branch protection, secret scanning, Dependabot.
 - [CONTAINER_BUILD_AND_DEPLOYMENT_VERIFICATION.md](CONTAINER_BUILD_AND_DEPLOYMENT_VERIFICATION.md) – Manual build/push and deployment verification.
 - [GCP_BOOTSTRAP.md](GCP_BOOTSTRAP.md) – GCP service account and key for automation.
+- [DEMO_EXECUTION_AND_PRESENTATION_RUNBOOK.md](DEMO_EXECUTION_AND_PRESENTATION_RUNBOOK.md) – Structured end-to-end CI/CD demo script and presentation narrative.
+- [ERROR_TESTING_AND_RECOVERY_PROCEDURES.md](ERROR_TESTING_AND_RECOVERY_PROCEDURES.md) – Error testing and recovery runbook (CI gate failures, deployment, security alerts).
