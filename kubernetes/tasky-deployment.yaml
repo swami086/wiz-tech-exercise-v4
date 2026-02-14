@@ -22,8 +22,8 @@ spec:
       serviceAccountName: tasky
       containers:
         - name: tasky
-          # Filled by deploy-tasky-to-gke.sh via envsubst ($TASKY_IMAGE)
-          image: ${TASKY_IMAGE}
+          # Default image; overridden by Kustomize (Argo CD sync) or deploy-tasky-to-gke.sh
+          image: tasky:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

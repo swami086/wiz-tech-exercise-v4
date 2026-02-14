@@ -1,0 +1,32 @@
+# Optional Argo CD AppProject for Tasky (Wiz Technical Exercise V4).
+# Use this if you want to scope Tasky to a dedicated project instead of "default".
+# Then set spec.project in application-tasky.yaml to "tasky".
+#
+# Apply: kubectl apply -f argocd/project-tasky.yaml -n argocd
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: tasky
+  namespace: argocd
+spec:
+  description: Tasky app (Wiz Technical Exercise)
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: tasky
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+    - group: rbac.authorization.k8s.io
+      kind: "*"

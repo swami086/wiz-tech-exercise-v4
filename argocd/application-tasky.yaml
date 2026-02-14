@@ -1,0 +1,52 @@
+# Argo CD Application for Tasky (Wiz Technical Exercise V4 – GitOps).
+# Deploys the Tasky app from the kubernetes/ path in this repo.
+# Prerequisites: Argo CD installed; repo added to Argo CD; tasky-secret exists in namespace tasky.
+#
+# Apply: kubectl apply -f argocd/application-tasky.yaml -n argocd
+# Replace REPO_URL and optionally TARGET_REVISION before apply, or patch after.
+# Image override: set spec.source.kustomize.images to your Artifact Registry image.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tasky
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/name: tasky
+    app.kubernetes.io/part-of: wiz-exercise
+spec:
+  project: default
+  source:
+    # Replace with your Git repo URL (HTTPS or SSH).
+    repoURL: https://github.com/your-org/Wiz
+    targetRevision: main
+    path: kubernetes
+    kustomize:
+      # Override image for your GCP Artifact Registry (replace PROJECT, REGION, TAG).
+      # Example: us-west1-docker.pkg.dev/myproject/tasky-repo/tasky:latest
+      images:
+        - tasky:latest=tasky:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tasky
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    # Ignore Secret data drift (secret is managed outside Git).
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data

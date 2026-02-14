@@ -1,0 +1,25 @@
+# Kustomization for Tasky app (Wiz Technical Exercise V4).
+# Used by Argo CD GitOps and by: kubectl apply -k kubernetes/
+# Image can be overridden via Argo CD Application spec.source.kustomize.images
+# or: kustomize edit set image tasky:latest=REGION-docker.pkg.dev/PROJECT/tasky-repo/tasky:TAG
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - tasky-rbac.yaml
+  - tasky-deployment.yaml
+  - tasky-service.yaml
+  - tasky-ingress.yaml
+
+# Image override: set in Argo CD Application (spec.source.kustomize.images) or run:
+#   kustomize edit set image tasky:latest=REGION-docker.pkg.dev/PROJECT/tasky-repo/tasky:TAG
+# Default below keeps "tasky:latest" for local apply -k; Argo CD should set the real image.
+images:
+  - name: tasky:latest
+    newName: tasky
+    newTag: latest
+
+commonLabels:
+  app.kubernetes.io/name: tasky
+  app.kubernetes.io/part-of: tasky
