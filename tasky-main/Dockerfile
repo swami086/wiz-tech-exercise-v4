@@ -1,4 +1,5 @@
 # Building the binary of the App
+# Phase 1 CI: terraform-validate, container-scan (Trivy), deploy-gate
 FROM golang:1.24 AS build
 
 WORKDIR /go/src/tasky
