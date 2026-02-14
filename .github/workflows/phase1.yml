@@ -1,6 +1,7 @@
 # Phase 1 CI Gates – mirrors demo-cicd-end-to-end.sh Phase 1.
 # Runs: terraform validate + container build/Trivy + deploy gate (build + wizexercise check).
 # When container-scan fails (Trivy CRITICAL/HIGH), fix-container-vulns bumps base images and opens a PR (works with branch protection).
+# Requires: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" (so fix job can run gh pr create).
 name: Phase 1 CI Gates
 
 on:
@@ -132,13 +133,20 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add tasky-main/Dockerfile
             git commit -m "fix(container): bump base images for Trivy CRITICAL/HIGH (alpine 3.19, golang 1.22)"
-            git push -u origin "$BRANCH"
-            gh pr create \
+            git push -u origin "$BRANCH" || true
+            if gh pr create \
               --base main \
               --head "$BRANCH" \
               --title "fix(container): bump base images for Trivy CRITICAL/HIGH" \
-              --body "Automated PR from fix-container-vulns after container-scan failed (Trivy CRITICAL/HIGH). Bumps Alpine 3.17.0 → 3.19, Golang 1.19 → 1.22. Merge when Phase 1 CI Gates pass on this branch."
-            echo "PR created; merge it to apply the fix and re-run CI on main."
+              --body "Automated PR from fix-container-vulns after container-scan failed (Trivy CRITICAL/HIGH). Bumps Alpine 3.17.0 → 3.19, Golang 1.19 → 1.22. Merge when Phase 1 CI Gates pass on this branch."; then
+              echo "PR created; merge it to apply the fix and re-run CI on main."
+            else
+              if gh pr view "$BRANCH" --repo "$GITHUB_REPOSITORY" 2>/dev/null; then
+                echo "PR for $BRANCH already exists (e.g. from a re-run)."
+              else
+                exit 1
+              fi
+            fi
           else
             echo "Dockerfile unchanged; cannot auto-fix further. Fix CVEs manually (base image or dependencies)."
           fi

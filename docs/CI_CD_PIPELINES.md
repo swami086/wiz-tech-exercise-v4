@@ -16,7 +16,7 @@ All workflows live in `.github/workflows/` at the repository root.
 ## Security gating
 
 - **Terraform**: Invalid or unformatted IaC fails the `terraform-validate` job.
-- **Container**: CRITICAL or HIGH vulnerabilities in the Tasky image fail the `container-scan` job (Trivy with `exit-code: 1`, `severity: CRITICAL,HIGH`). When that job fails, the **fix-container-vulns** job runs: it bumps the Dockerfile base images (Alpine → 3.19, Golang → 1.22), pushes to a new branch, and opens a PR targeting `main`. Merge the PR when Phase 1 CI Gates pass on the branch; works with branch protection (no direct push to `main` required).
+- **Container**: CRITICAL or HIGH vulnerabilities in the Tasky image fail the `container-scan` job (Trivy with `exit-code: 1`, `severity: CRITICAL,HIGH`). When that job fails, the **fix-container-vulns** job runs: it bumps the Dockerfile base images (Alpine → 3.19, Golang → 1.22), pushes to a new branch, and opens a PR targeting `main`. Merge the PR when Phase 1 CI Gates pass on the branch; works with branch protection (no direct push to `main` required). Enable **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** so the fix job can create the PR.
 - **Deploy**: On **pull requests**, the job runs a build-and-verify-only variant (no push), so the required check can complete before merge. On **push to main**, the job runs the full build, verify, and push to Artifact Registry (requires GCP credentials; see below).
 
 ## Required status checks (branch protection)
