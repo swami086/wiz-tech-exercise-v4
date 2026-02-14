@@ -124,6 +124,7 @@ jobs:
 
       - name: Open PR with Dockerfile fix
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.branch.outputs.branch }}
         run: |
           if ! git diff --quiet tasky-main/Dockerfile; then
