@@ -236,9 +236,10 @@ jobs:
           docker push "$LATEST"
 
       # Trigger deployment: Argo CD will sync from Git (image is tasky:latest); rollout pulls new image
-      - name: Get GKE credentials
+      - name: Install GKE auth plugin and get credentials
         if: github.ref == 'refs/heads/main'
         run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
             --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
 
