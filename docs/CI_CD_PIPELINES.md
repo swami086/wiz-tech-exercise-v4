@@ -33,7 +33,7 @@ IaC is only deployed (Terraform apply) **after** the validate job passes in the 
 
 ### Container and application scanning (before application deployment)
 
-- **Trivy** (container) – runs in **Phase 1 CI Gates** (`phase1.yml`) and in **container-scan.yml**. Fails the pipeline on **CRITICAL** and **HIGH** vulnerabilities (`exit-code: 1`). SARIF uploaded to Security tab.
+- **Trivy** (container) – runs in **Phase 1 CI Gates** (`phase1.yml`). Fails the pipeline on **CRITICAL** and **HIGH** vulnerabilities (`exit-code: 1`). SARIF uploaded to Security tab.
 - **Grype** (container) – additional vulnerability scan in Phase 1; SARIF uploaded to Security tab.
 - **Hadolint** – Dockerfile lint in Phase 1 (`tasky-main/Dockerfile`); fails on warning by default.
 - **Semgrep** (SAST) – runs on `tasky-main` (e.g. `p/golang`, `p/security-audit`); SARIF uploaded.
@@ -49,9 +49,7 @@ All workflows live in `.github/workflows/` at the repository root.
 |----------|------|---------|---------|
 | **`iac-deploy.yml`** | `validate`, `deploy` | Push/PR to `main` (terraform or workflow) | **Pipeline 1 – IaC:** Validate + tfsec, then (on push) Terraform plan and apply. |
 | **`deploy.yml`** | `deploy` | Push/PR to `main` (tasky-main or workflow) | **Pipeline 2 – Application:** Build, push to Artifact Registry, trigger K8s deployment. |
-| **`phase1.yml`** | `terraform-validate`, `container-scan`, `hadolint`, `semgrep`, `trivy-fs`, `deploy-gate` | Push/PR to `main` (terraform, tasky-main, or workflow) | **Phase 1 CI gates** – Validate, Trivy + Grype, Hadolint, Semgrep, Trivy FS, deploy gate. |
-| `terraform-validate.yml` | `terraform-validate` | Push/PR to `main` (terraform or workflow) | Standalone Terraform validate + format check. |
-| `container-scan.yml` | `container-scan` | Push/PR to `main` (tasky-main or workflow) | Standalone Trivy scan; fails on CRITICAL/HIGH; uploads SARIF. |
+| **`phase1.yml`** | `terraform-validate`, `container-scan`, `hadolint`, `semgrep`, `trivy-fs`, `scan-report`, `deploy-gate` | Push/PR to `main` (terraform, tasky-main, or workflow) | **Phase 1 CI gates** – Validate, Trivy + Grype, Hadolint, Semgrep, Trivy FS, scan report PR, deploy gate. Deploy workflow runs after Phase 1 (workflow_run) or manually. |
 
 ## Security gating
 
@@ -66,19 +64,14 @@ Configure branch protection so that **IaC and container image scanning pass befo
 **Option A – Two pipelines + Phase 1 gates:**  
 Require these checks so both pipelines are gated by scanning:
 - `validate` (from **IaC Deploy** workflow – Terraform validate + fmt; IaC scan runs here)
-- `container-scan` (from Phase 1 CI Gates or container-scan.yml)
+- `container-scan` (from Phase 1 CI Gates)
 - `deploy-gate` (from Phase 1 CI Gates) or `deploy` (from Deploy workflow)
 
-**Option B – Phase 1 workflow only (single entry point):**  
+**Option B – Phase 1 workflow only (recommended):**  
 Use `phase1.yml` to run all CI gates in one workflow:
 - `terraform-validate` (from Phase 1 CI Gates)
 - `container-scan` (from Phase 1 CI Gates)
 - `deploy-gate` (from Phase 1 CI Gates)
-
-**Option C – Individual workflows:**  
-- `validate` (from iac-deploy.yml) or `terraform-validate` (from terraform-validate.yml)
-- `container-scan`
-- `deploy`
 
 1. Go to **Settings → Code and automation → Branches → Branch protection rule for `main`**.
 2. Under **Require status checks to pass before merging**, add the checks above.
@@ -86,14 +79,11 @@ Use `phase1.yml` to run all CI gates in one workflow:
 Or use the script from the repo root (requires `gh` and `jq`):
 
 ```bash
-# Two pipelines: IaC + Application (require validate from iac-deploy, container-scan, deploy)
+# Two pipelines: IaC + Application (require validate from iac-deploy, Phase 1 gates, deploy)
 ./scripts/github-require-status-checks.sh "validate" "container-scan" "deploy"
 
-# Phase 1 consolidated
+# Phase 1 consolidated (recommended)
 ./scripts/github-require-status-checks.sh "terraform-validate" "container-scan" "deploy-gate"
-
-# Or individual workflows only
-./scripts/github-require-status-checks.sh "terraform-validate" "container-scan" "deploy"
 ```
 
 All checks run on pull requests (path filters apply), so they complete on PRs instead of remaining in an "Expected" state. The `deploy` job on PRs performs pre-merge build and `wizexercise.txt` validation only; the full push runs after merge on push to `main`.
@@ -131,13 +121,13 @@ Then in GitHub: **Settings → Secrets and variables → Actions**: add `GCP_SA_
 
 ### Terraform validate and container-scan (no secrets)
 
-- **terraform-validate** (and Phase 1): No secrets; runs `terraform init -backend=false` and `terraform validate` (no GCP credentials).
-- **container-scan**: No secrets; builds the image locally and runs Trivy in the runner.
+- **terraform-validate** (Phase 1 and IaC Deploy): No secrets; runs `terraform init -backend=false` and `terraform validate` (no GCP credentials).
+- **container-scan** (Phase 1): No secrets; builds the image locally and runs Trivy in the runner.
 
 ## Path filters
 
-- **iac-deploy** and **terraform-validate**: Run when files under `terraform/` or the workflow file change.
-- **container-scan** and **deploy**: Run when files under `tasky-main/` or their workflow file change.
+- **iac-deploy** and **Phase 1** (terraform-validate job): Run when files under `terraform/` or the workflow file change.
+- **Phase 1** (container-scan job) and **Deploy**: Run when files under `tasky-main/` or the Phase 1 workflow change; Deploy runs after Phase 1 or manually.
 
 This reduces unnecessary runs when only docs or scripts change.
 

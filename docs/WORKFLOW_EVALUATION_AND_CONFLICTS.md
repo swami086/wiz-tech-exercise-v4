@@ -9,15 +9,15 @@ Evaluation of CI/CD pipelines across the **main repo (Wiz)** and **wiz-iac** rep
 | Workflow | Triggers | Purpose |
 |----------|----------|---------|
 | **IaC Deploy** | push/PR (terraform/**, iac-deploy.yml), workflow_dispatch | Validate Terraform, tfsec scan, scan report PR, Terraform deploy (push to main only) |
-| **Phase 1 CI Gates** | push/PR (terraform/**, tasky-main/**, phase1.yml), workflow_dispatch | Terraform validate, container scan (Trivy/Grype), Hadolint, Semgrep, Trivy FS, scan report PR, deploy-gate (build+verify only) |
-| **Deploy (Build, Push, K8s)** | workflow_run (Phase 1 completed), workflow_dispatch | Build image, push to Artifact Registry, K8s rollout (only after Phase 1 or manual) |
-| **Container Scan** | push/PR (tasky-main/**, container-scan.yml), workflow_dispatch | Trivy container scan, SARIF upload |
-| **Terraform Validate** | push/PR (terraform/**, terraform-validate.yml), workflow_dispatch | Terraform init/validate/fmt only |
+| **Phase 1 CI Gates** | push/PR (terraform/**, tasky-main/**, phase1.yml), workflow_dispatch | Terraform validate, container scan (Trivy/Grype), Hadolint, Semgrep, Trivy FS, scan report PR, deploy-gate (no build; gate only) |
+| **Deploy (Build, Push, K8s)** | workflow_run (Phase 1 completed), workflow_dispatch | Build image, push to Artifact Registry, apply Argo CD Application, K8s rollout (only after Phase 1 or manual) |
+
+**Removed as redundant:** Standalone **Container Scan** and **Terraform Validate** workflows were removed; Phase 1 already runs container scan (Trivy/Grype) and Terraform validate. An orphan `tasky-main/.github/workflows/build-and-publish.yml` (never run by GitHub; pushes to ghcr.io) was also removed in favour of root **Deploy** (Artifact Registry).
 
 ### Path overlap (intended)
 
-- **terraform/** changes → IaC Deploy + Terraform Validate (both run; no conflict).
-- **tasky-main/** changes → Phase 1 + Container Scan (both run; no conflict).
+- **terraform/** changes → IaC Deploy and/or Phase 1 (depending on paths).
+- **tasky-main/** changes → Phase 1 (container scan + other gates).
 - **Phase 1** does not deploy; **Deploy** workflow is the only one that pushes and rolls out (triggered after Phase 1 or manually).
 
 ### Scan report PRs (main repo)
