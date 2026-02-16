@@ -2,6 +2,8 @@
 
 Evaluation of CI/CD pipelines across the **main repo (Wiz)** and **wiz-iac** repo to ensure no conflicts.
 
+**Redundancy audit (both repos):** The main repo had redundant workflows removed (standalone Container Scan, Terraform Validate, and the orphan `tasky-main/.github/workflows/build-and-publish.yml`). The **wiz-iac** repo has only **IaC Deploy** and **IaC Destroy**; no redundant workflows (no duplicate validate/scan workflows; deploy and destroy are distinct). Both repos are trimmed to necessary workflows only.
+
 ---
 
 ## 1. Main repo (Wiz) – workflow summary
