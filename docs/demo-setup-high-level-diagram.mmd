@@ -1,0 +1,107 @@
+flowchart TB
+  subgraph Entry["How to run the demo"]
+    direction TB
+    DEMO["demo-cicd-end-to-end.sh<br/>Full CI/CD demo (local gates + optional GitHub + verify)"]
+    IAC["iac-deploy.yml trigger<br/>Push terraform/** to main"]
+    APP["deploy.yml trigger<br/>Push tasky-main/** to main"]
+    PR["PR with vulnerabilities<br/>container-scan + Trivy showcase"]
+  end
+
+  subgraph VCS["Source of truth"]
+    GITHUB[("GitHub repo<br/>terraform/ · tasky-main/ · kubernetes/ · .github/workflows/")]
+  end
+
+  subgraph CI["CI/CD Pipelines"]
+    direction TB
+    subgraph IaC_Pipeline["IaC Pipeline (iac-deploy.yml)"]
+      TV["Terraform validate + fmt"]
+      TFSEC["tfsec (IaC scan)"]
+      TPLAN["terraform plan"]
+      TAPPLY["terraform apply"]
+      TV --> TFSEC --> TPLAN --> TAPPLY
+    end
+    subgraph App_Pipeline["App Pipeline (deploy.yml)"]
+      BUILD["Build Tasky image"]
+      VERIFY["Verify wizexercise.txt"]
+      PUSH["Push to Artifact Registry"]
+      ROLLOUT["kubectl rollout restart"]
+      BUILD --> VERIFY --> PUSH --> ROLLOUT
+    end
+    subgraph Gates["Security gates (phase1 / PR)"]
+      TVALID["terraform-validate"]
+      CSCAN["container-scan (Trivy CRITICAL/HIGH)"]
+      DGATE["deploy-gate (build + verify)"]
+    end
+  end
+
+  subgraph GCP["GCP Project (Terraform-managed)"]
+    direction TB
+
+    subgraph Network["Network"]
+      VPC["VPC (regional)"]
+      GKE_SUB["GKE subnet (private)<br/>pods 10.1.0.0/16, services 10.2.0.0/20"]
+      VM_SUB["VM subnet"]
+      NAT["Cloud NAT (egress for private GKE)"]
+      VPC --> GKE_SUB
+      VPC --> VM_SUB
+      VPC --> NAT
+    end
+
+    subgraph Compute["Compute"]
+      GKE["GKE cluster (private nodes)<br/>authorized networks for control plane"]
+      VM["MongoDB VM (e2-medium)<br/>Debian 10 · no external IP · IAP SSH"]
+      GKE_SUB --> GKE
+      VM_SUB --> VM
+    end
+
+    subgraph Data["Data & storage"]
+      MONGO[("MongoDB 4.4 on VM<br/>auth · tododb · startup script")]
+      BUCKET[("Backup GCS bucket<br/>public read/list · versioning")]
+      VM --> MONGO
+      MONGO --> BUCKET
+    end
+
+    subgraph App_Runtime["Application runtime"]
+      AR["Artifact Registry (tasky-repo)"]
+      subgraph Deploy_Path["Deployment path (one of)"]
+        TF_TASKY["Terraform K8s<br/>tasky_enabled=true"]
+        ARGO["Argo CD GitOps<br/>argocd_enabled=true · syncs kubernetes/ from Git"]
+      end
+      TASKY["Tasky app on GKE<br/>MONGODB_URI · SECRET_KEY · wizexercise.txt"]
+      LB["GCE Ingress / Load Balancer"]
+      GKE --> TF_TASKY
+      GKE --> ARGO
+      TF_TASKY --> TASKY
+      ARGO --> TASKY
+      TASKY --> LB
+      TASKY --> MONGO
+      AR --> TASKY
+    end
+
+    subgraph Firewall["Firewall (intentional for demo)"]
+      FW_SSH["SSH (22) from 0.0.0/0 → MongoDB VM tag"]
+      FW_MONGO["MongoDB (27017) from GKE subnet + pods only"]
+    end
+
+    subgraph Security["Cloud security & observability"]
+      AUDIT["Audit logs (Data Access: Storage, Compute)"]
+      ORG_POLICY["Org Policy: requireOsLogin (optional)"]
+      ALERTS["Monitoring alerts (optional)<br/>firewall change · bucket IAM change"]
+    end
+  end
+
+  %% Flows
+  Entry --> VCS
+  GITHUB --> CI
+  IaC_Pipeline --> GCP
+  App_Pipeline --> AR
+  App_Pipeline --> GKE
+  Gates --> GITHUB
+  TAPPLY --> Network
+  TAPPLY --> Compute
+  TAPPLY --> Data
+  TAPPLY --> Firewall
+  TAPPLY --> Security
+  TAPPLY --> AR
+  DEMO --> CI
+  DEMO --> GCP
