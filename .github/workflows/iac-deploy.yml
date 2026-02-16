@@ -57,6 +57,51 @@ jobs:
           docker run --rm -v "${{ github.workspace }}:/src" aquasec/tfsec:latest /src/${{ env.TF_WORKING_DIR }} --minimum-severity HIGH --no-color 2>/dev/null || true
         continue-on-error: true
 
+  scan-report:
+    name: scan-report
+    runs-on: ubuntu-latest
+    needs: [validate]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tfsec and capture output
+        id: tfsec
+        run: |
+          mkdir -p docs/scan-reports
+          RUN_DATE=$(date -u +%Y-%m-%dT%H:%MZ)
+          REPORT="docs/scan-reports/iac-deploy-scan-report.md"
+          echo "# IaC Deploy – Security Scan Report" > "$REPORT"
+          echo "" >> "$REPORT"
+          echo "**Pipeline:** IaC Deploy | **Run:** ${{ github.run_id }} | **Date:** $RUN_DATE" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo "## tfsec (Terraform security)" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo '```' >> "$REPORT"
+          docker run --rm -v "${{ github.workspace }}:/src" aquasec/tfsec:latest /src/${{ env.TF_WORKING_DIR }} --minimum-severity LOW --no-color 2>&1 || true >> "$REPORT"
+          echo '```' >> "$REPORT"
+          echo "report_path=$REPORT" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Create Pull Request for scan report
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/scan-report-iac-deploy-${{ github.run_id }}
+          delete-branch: true
+          commit-message: "ci: add IaC Deploy scan report (run ${{ github.run_id }})"
+          title: "[CI] IaC Deploy scan report – run ${{ github.run_id }}"
+          body: |
+            Auto-generated scan report from **IaC Deploy** pipeline.
+            - **Workflow run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - **Commit:** ${{ github.sha }}
+            - **Branch:** ${{ github.ref_name }}
+            Please review and merge to add the report to the repo.
+
   deploy:
     name: deploy
     runs-on: ubuntu-latest

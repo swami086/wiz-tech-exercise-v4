@@ -1,6 +1,5 @@
 # Phase 1 CI Gates – all scans must succeed before deploy-gate runs.
-# Demo flow (on main): build image → push to GCP Artifact Registry (tasky:SHA + tasky:latest)
-# → rollout restart so Argo CD–managed deployment pulls new image → output application URL in job summary.
+# deploy-gate: build and verify image only. Actual push and K8s rollout run in "Deploy (Build, Push, and K8s Deploy)" workflow (triggered after Phase 1 completes).
 name: Phase 1 CI Gates
 
 on:
@@ -180,6 +179,81 @@ jobs:
         with:
           sarif_file: 'trivy-fs.sarif'
 
+  scan-report:
+    name: scan-report
+    runs-on: ubuntu-latest
+    needs: [terraform-validate, container-scan, hadolint, semgrep, trivy-fs]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Tasky image (for container scans)
+        run: docker build --platform linux/amd64 -t tasky:${{ github.sha }} ./tasky-main
+
+      - name: Generate combined scan report
+        run: |
+          RUN_DATE=$(date -u +%Y-%m-%dT%H:%MZ)
+          REPORT="docs/scan-reports/phase1-scan-report.md"
+          mkdir -p docs/scan-reports
+
+          echo "# Phase 1 CI Gates – Security Scan Report" > "$REPORT"
+          echo "" >> "$REPORT"
+          echo "**Pipeline:** Phase 1 CI Gates | **Run:** ${{ github.run_id }} | **Date:** $RUN_DATE" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo "---" >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          echo "## 1. Trivy (container image)" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo '```' >> "$REPORT"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 0 --format table tasky:${{ github.sha }} 2>&1 >> "$REPORT" || true
+          echo '```' >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          echo "## 2. Trivy (filesystem – tasky-main)" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo '```' >> "$REPORT"
+          docker run --rm -v "${{ github.workspace }}:/src" aquasec/trivy:latest fs --exit-code 0 --format table /src/tasky-main 2>&1 >> "$REPORT" || true
+          echo '```' >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          echo "## 3. Hadolint (Dockerfile)" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo '```' >> "$REPORT"
+          docker run --rm -v "${{ github.workspace }}:/mnt" hadolint/hadolint hadolint /mnt/tasky-main/Dockerfile 2>&1 >> "$REPORT" || true
+          echo '```' >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          echo "## 4. Semgrep (SAST – tasky-main)" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo '```' >> "$REPORT"
+          pip install -q semgrep && semgrep scan --config p/golang --config p/security-audit --no-error tasky-main 2>&1 >> "$REPORT" || true
+          echo '```' >> "$REPORT"
+          echo "" >> "$REPORT"
+
+          echo "## 5. Terraform validate & format" >> "$REPORT"
+          echo "" >> "$REPORT"
+          echo "Terraform validate and format check passed (see terraform-validate job)." >> "$REPORT"
+
+      - name: Create Pull Request for scan report
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/scan-report-phase1-${{ github.run_id }}
+          delete-branch: true
+          commit-message: "ci: add Phase 1 scan report (run ${{ github.run_id }})"
+          title: "[CI] Phase 1 scan report – run ${{ github.run_id }}"
+          body: |
+            Auto-generated scan report from **Phase 1 CI Gates** pipeline.
+            - **Workflow run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - **Commit:** ${{ github.sha }}
+            - **Branch:** ${{ github.ref_name }}
+            Please review and merge to add the report to the repo.
+
   deploy-gate:
     name: deploy-gate
     runs-on: ubuntu-latest
@@ -197,87 +271,7 @@ jobs:
           docker build --platform linux/amd64 -t tasky:${{ github.sha }} ./tasky-main
           docker run --rm --platform linux/amd64 --entrypoint cat tasky:${{ github.sha }} /app/wizexercise.txt | grep -q . || { echo "wizexercise.txt missing in image"; exit 1; }
 
-      # On main: push to GCP Artifact Registry so Argo CD / K8s can pull the image
-      - name: Authenticate to Google Cloud
-        if: github.ref == 'refs/heads/main'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        if: github.ref == 'refs/heads/main'
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Ensure Artifact Registry repo exists
-        if: github.ref == 'refs/heads/main'
+      - name: Gate passed – deploy runs in separate workflow
         run: |
-          set -e
-          if gcloud artifacts repositories describe ${{ env.ARTIFACT_REGISTRY_REPO }} \
-            --location=${{ env.GCP_REGION }} --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null; then
-            echo "Repository ${{ env.ARTIFACT_REGISTRY_REPO }} already exists, skipping create."
-            exit 0
-          fi
-          gcloud services enable artifactregistry.googleapis.com --project=${{ secrets.GCP_PROJECT_ID }}
-          out=$(gcloud artifacts repositories create ${{ env.ARTIFACT_REGISTRY_REPO }} \
-            --repository-format=docker --location=${{ env.GCP_REGION }} \
-            --description="Tasky application container images for Wiz Exercise" \
-            --project=${{ secrets.GCP_PROJECT_ID }} 2>&1)
-          ret=$?
-          if [[ $ret -eq 0 ]]; then exit 0; fi
-          if echo "$out" | grep -qi "already exists"; then
-            echo "Repository already exists (e.g. created by Terraform), continuing."
-            exit 0
-          fi
-          echo "$out"
-          exit $ret
-
-      - name: Configure Docker for Artifact Registry
-        if: github.ref == 'refs/heads/main'
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Push image to GCP Artifact Registry
-        if: github.ref == 'refs/heads/main'
-        run: |
-          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:${{ github.sha }}"
-          LATEST="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:latest"
-          docker tag tasky:${{ github.sha }} "$IMAGE"
-          docker push "$IMAGE"
-          docker tag tasky:${{ github.sha }} "$LATEST"
-          docker push "$LATEST"
-
-      # Trigger deployment: Argo CD will sync from Git (image is tasky:latest); rollout pulls new image
-      - name: Install GKE auth plugin and get credentials
-        if: github.ref == 'refs/heads/main'
-        run: |
-          gcloud components install gke-gcloud-auth-plugin --quiet
-          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
-            --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
-
-      - name: Trigger Argo CD deployment (rollout new image)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          kubectl rollout restart deployment/tasky -n "${{ env.TASKY_NAMESPACE }}"
-          kubectl rollout status deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" --timeout=120s
-
-      - name: Get application URL
-        id: app-url
-        if: github.ref == 'refs/heads/main'
-        run: |
-          echo "## Application URL" >> $GITHUB_STEP_SUMMARY
-          for i in $(seq 1 12); do
-            IP=$(kubectl get ingress -n "${{ env.TASKY_NAMESPACE }}" tasky -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-            if [ -n "$IP" ]; then
-              URL="http://$IP"
-              echo "**Live URL:** [$URL]($URL)" >> $GITHUB_STEP_SUMMARY
-              echo "Application is available at: $URL"
-              echo "url=$URL" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            echo "Waiting for ingress IP... ($i/12)"
-            sleep 15
-          done
-          echo "Ingress IP not yet assigned (GCP load balancer can take 5–10 min). Check with: \`kubectl get ingress -n tasky\`" >> $GITHUB_STEP_SUMMARY
-          echo "::notice::Ingress may still be provisioning. Run: kubectl get ingress -n tasky"
-        continue-on-error: true
+          echo "## Phase 1 CI Gates passed" >> $GITHUB_STEP_SUMMARY
+          echo "All scans passed. **Deploy (Build, Push, and K8s Deploy)** workflow will run after this workflow completes (workflow_run) to push image and rollout."

@@ -1,20 +1,10 @@
 # Pipeline 2: Build & push application container and trigger Kubernetes deployment.
-# Runs after Phase 1 CI Gates succeed (workflow_run) so all scans pass before deploy.
-# On PR: build and verify only. On push to main (after Phase 1): push to Artifact Registry and K8s rollout.
+# Runs ONLY after Phase 1 CI Gates succeed (workflow_run) or on manual trigger – avoids duplicate deploy with Phase 1.
+# Phase 1 deploy-gate does build+verify only; this workflow does the actual push and K8s rollout.
 # Requires: GCP_SA_KEY, GCP_PROJECT_ID. Optional: GKE_CLUSTER_NAME, GKE_REGION.
 name: Deploy (Build, Push, and K8s Deploy)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'tasky-main/**'
-      - '.github/workflows/deploy.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'tasky-main/**'
-      - '.github/workflows/deploy.yml'
   workflow_run:
     workflows: ["Phase 1 CI Gates"]
     types: [completed]
@@ -35,6 +25,7 @@ jobs:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     permissions:
       contents: read
+      id-token: write
 
     steps:
       - name: Checkout
