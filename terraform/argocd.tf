@@ -119,7 +119,7 @@ ARGOCD_APP
       kubectl apply -n argocd -f "$TMPF"
       rm -f "$TMPF"
     EOT
-  }
+}
 
-  depends_on = [null_resource.argocd_install]
+depends_on = [null_resource.argocd_install]
 }
