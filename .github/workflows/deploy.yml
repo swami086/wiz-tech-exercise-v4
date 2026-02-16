@@ -103,6 +103,10 @@ jobs:
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
             --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
 
+      - name: Install GKE auth plugin for kubectl
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
       - name: Apply Argo CD Application (app repo deploys the app)
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
