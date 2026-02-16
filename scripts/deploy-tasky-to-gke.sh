@@ -27,17 +27,23 @@ if [[ -z "$GCP_PROJECT_ID" ]]; then
   exit 1
 fi
 
-# MongoDB internal IP (for optional unauthenticated URI if user didn't set MONGODB_URI)
-MONGO_IP=""
-if command -v terraform &>/dev/null && [[ -d terraform ]]; then
-  MONGO_IP=$(cd terraform && terraform output -raw mongodb_vm_internal_ip 2>/dev/null || true)
+# Prefer Terraform outputs so destroy/recreate works without hardcoded values
+if [[ -z "${MONGODB_URI:-}" ]] && command -v terraform &>/dev/null && [[ -d "$REPO_ROOT/terraform" ]]; then
+  MONGODB_URI=$(cd "$REPO_ROOT/terraform" && terraform output -raw mongodb_connection_string 2>/dev/null || true)
+fi
+if [[ -z "${SECRET_KEY:-}" ]]; then
+  SECRET_KEY=$(openssl rand -base64 32 2>/dev/null || true)
 fi
 
-# Prompt for Secret values if not set
+# Prompt only if still missing (e.g. no Terraform state)
 if [[ -z "${MONGODB_URI:-}" ]]; then
+  MONGO_IP=""
+  if command -v terraform &>/dev/null && [[ -d "$REPO_ROOT/terraform" ]]; then
+    MONGO_IP=$(cd "$REPO_ROOT/terraform" && terraform output -raw mongodb_vm_internal_ip 2>/dev/null || true)
+  fi
   if [[ -n "$MONGO_IP" ]]; then
-    echo "MONGODB_URI not set. Example (no auth): mongodb://${MONGO_IP}:27017"
-    echo "With auth: mongodb://todouser:PASSWORD@${MONGO_IP}:27017/tododb"
+    echo "MONGODB_URI not set. Example (with auth): mongodb://todouser:PASSWORD@${MONGO_IP}:27017/tododb"
+    echo "Or run from repo with Terraform applied to use: terraform output -raw mongodb_connection_string"
   fi
   read -r -p "Enter MONGODB_URI: " MONGODB_URI
   if [[ -z "$MONGODB_URI" ]]; then
@@ -46,7 +52,7 @@ if [[ -z "${MONGODB_URI:-}" ]]; then
   fi
 fi
 if [[ -z "${SECRET_KEY:-}" ]]; then
-  read -r -p "Enter SECRET_KEY (JWT secret): " SECRET_KEY
+  read -r -p "Enter SECRET_KEY (JWT secret, min 32 chars): " SECRET_KEY
   if [[ -z "$SECRET_KEY" ]]; then
     echo "Error: SECRET_KEY is required."
     exit 1
@@ -72,29 +78,23 @@ gcloud container clusters get-credentials "$CLUSTER_NAME" \
 
 IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPO_NAME}/tasky:latest"
 
-# Namespace
+# Namespace (must exist before secret)
 kubectl apply -f kubernetes/namespace.yaml
 
-# RBAC: ServiceAccount + ClusterRoleBinding (cluster-admin, intentional misconfiguration)
-kubectl apply -f kubernetes/tasky-rbac.yaml
-
-# Secret (create or replace)
+# Secret (create or replace; required before deployment)
 kubectl create secret generic tasky-secret \
   --from-literal=MONGODB_URI="$MONGODB_URI" \
   --from-literal=SECRET_KEY="$SECRET_KEY" \
   -n tasky \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Deployment with correct image (sed replaces placeholder for portability)
-sed "s|\${TASKY_IMAGE}|$IMAGE|g" kubernetes/tasky-deployment.yaml > kubernetes/tasky-deployment.generated.yaml
-kubectl apply -f kubernetes/tasky-deployment.generated.yaml -n tasky
-rm -f kubernetes/tasky-deployment.generated.yaml
-
-# Service
-kubectl apply -f kubernetes/tasky-service.yaml -n tasky
-
-# Ingress (GCP Load Balancer; external IP may take 5–10 min)
-kubectl apply -f kubernetes/tasky-ingress.yaml -n tasky
+# Apply remaining manifests via Kustomize (image substituted for portability)
+# If kustomize is not available, use kubectl kustomize (Kubernetes 1.14+)
+if command -v kustomize &>/dev/null; then
+  kustomize build kubernetes | sed "s|tasky:latest|$IMAGE|g" | kubectl apply -f -
+else
+  kubectl kustomize kubernetes | sed "s|tasky:latest|$IMAGE|g" | kubectl apply -f -
+fi
 
 echo "Deployment, Service, and Ingress applied. Check: kubectl get pods,svc,ingress -n tasky"
 echo "Wait 5–10 min for Ingress external IP: kubectl get ingress -n tasky"

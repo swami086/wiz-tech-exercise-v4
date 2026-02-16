@@ -1,50 +1,66 @@
 # MongoDB Setup & Backup Automation
 
-This document covers the **MongoDB Setup & Backup Automation** ticket: installing an outdated MongoDB on the VM, enabling auth, and configuring daily backups to the GCS bucket.
+This document covers **MongoDB Setup & Backup Automation**: an outdated MongoDB 4.4 on the VM with auth enabled and daily backups to the GCS bucket.
 
-## Prerequisites
+## Automated setup (Terraform startup script)
+
+MongoDB is **installed and configured automatically** when the MongoDB VM is created by Terraform. No manual SSH or script execution is required.
+
+### Prerequisites
 
 - [Infrastructure Deployment](INFRASTRUCTURE_DEPLOYMENT.md) completed (VPC, GKE, MongoDB VM, backup GCS bucket).
-- Terraform outputs: `mongodb_vm_name`, `mongodb_vm_zone`, `mongodb_backup_bucket`, `mongodb_vm_internal_ip`.
-- SSH access to the MongoDB VM via **IAP tunnel** (VM has no external IP; use `gcloud compute ssh --tunnel-through-iap`).
+- In `terraform.tfvars` you must set **MongoDB passwords** (required by the startup script):
+  - `mongodb_admin_password` – admin user password
+  - `mongodb_app_password` – application user (todouser) password  
+  Generate with: `openssl rand -base64 32`
 
-## 1. Get bucket name and VM details
+### What runs on first boot
 
-From the repo root (after `terraform apply`):
+The VM runs `terraform/scripts/mongodb-startup.sh.tpl` (injected as `metadata_startup_script`). It:
+
+- Installs MongoDB 4.4, enables auth, creates admin and app users
+- Binds MongoDB to the VM internal IP (GKE subnet only)
+- Creates `tododb` and `tasks` with a sample document
+- Deploys `/usr/local/bin/mongodb-backup-to-gcs.sh` and cron at 02:00 UTC
+
+Logs: `/var/log/mongodb-startup.log`.
+
+### Connection string and credentials
+
+After `terraform apply`, use the Terraform output for the app connection string:
 
 ```bash
 cd terraform
-BUCKET=$(terraform output -raw mongodb_backup_bucket)
-VM_NAME=$(terraform output -raw mongodb_vm_name)
-ZONE=$(terraform output -raw mongodb_vm_zone)
-echo "Bucket: $BUCKET  VM: $VM_NAME  Zone: $ZONE"
+terraform output -raw mongodb_connection_string
+# Use this value for tasky_mongodb_uri or MONGO_URI
 ```
 
-## 2. Run the install script (password required)
+App credentials on the VM: `/etc/mongodb-app-credentials.conf` (see output `mongodb_credentials_path`).
 
-Authentication is **required**. You must provide a strong admin password. The script installs MongoDB 4.4, enables auth, creates the `tododb` database and application user, binds MongoDB to the VM internal IP, and sets up daily backups.
+## Optional: manual re-run (without recreating VM)
 
-**Run via gcloud (IAP tunnel for SSH)**
+If you need to re-run the install logic **without** recreating the VM (e.g. to change passwords or fix state), you can still use the manual script over SSH:
+
+- Terraform outputs: `mongodb_vm_name`, `mongodb_vm_zone`, `mongodb_backup_bucket`, `mongodb_vm_internal_ip`.
+- SSH via **IAP tunnel**: `gcloud compute ssh ... --tunnel-through-iap`.
 
 ```bash
-# From repo root; admin password required
 export GCP_PROJECT_ID="your-project-id"
-./scripts/run-mongodb-setup.sh '<YOUR_MONGO_ADMIN_PASSWORD>'
-# Optional: set app user password (default: generated and stored on VM)
-./scripts/run-mongodb-setup.sh '<ADMIN_PASSWORD>' '<APP_USER_PASSWORD>'
+./scripts/run-mongodb-setup.sh '<ADMIN_PASSWORD>' '[APP_PASSWORD]'
 ```
 
 Or copy and run on the VM manually:
 
 ```bash
-gcloud compute scp scripts/mongodb-install.sh "${VM_NAME}:~/mongodb-install.sh" --zone="$ZONE" --project="$GCP_PROJECT_ID"
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --tunnel-through-iap -- \
-  "sudo bash ~/mongodb-install.sh $BUCKET '<YOUR_MONGO_ADMIN_PASSWORD>'"
+BUCKET=$(terraform output -raw mongodb_backup_bucket)
+VM_NAME=$(terraform output -raw mongodb_vm_name)
+ZONE=$(terraform output -raw mongodb_vm_zone)
+gcloud compute scp scripts/mongodb-install.sh "${VM_NAME}:~/mongodb-install.sh" --zone="$ZONE" --project="$GCP_PROJECT_ID" --tunnel-through-iap --internal-ip
+gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --tunnel-through-iap --internal-ip -- \
+  "sudo bash ~/mongodb-install.sh $BUCKET '<ADMIN_PASSWORD>'"
 ```
 
-Replace `<YOUR_MONGO_ADMIN_PASSWORD>` with a strong password. The script creates an `admin` user (role `root` on `admin`) and enforces `security.authorization: enabled` in `/etc/mongod.conf`.
-
-## 3. What the script does
+## What the script does
 
 | Step | Description |
 |------|-------------|
@@ -57,12 +73,12 @@ Replace `<YOUR_MONGO_ADMIN_PASSWORD>` with a strong password. The script creates
 
 The VM’s service account has `roles/storage.objectCreator` on the backup bucket (see `terraform/backup_bucket.tf`), so uploads work without extra credentials.
 
-## 4. Application user and connection strings
+## Application user and connection strings
 
-- **Admin user**: `admin` (password: the one you passed to the script). Use for backup and admin tasks.
-- **Application user**: `todouser` by default (or set `MONGO_APP_USER`). Password is in `/etc/mongodb-app-credentials.conf` on the VM, or the one you passed as the third argument.
+- **Admin user**: `admin` (password: `mongodb_admin_password` in tfvars). Use for backup and admin tasks.
+- **Application user**: `todouser` (password: `mongodb_app_password` in tfvars). Stored on VM at `/etc/mongodb-app-credentials.conf`.
 
-**Recommended connection string for the todo app (use app user, not admin):**
+**Connection string:** use `terraform output -raw mongodb_connection_string` or:
 
 ```text
 MONGO_URI=mongodb://todouser:<APP_PASSWORD>@<MONGODB_VM_INTERNAL_IP>:27017/tododb
@@ -77,13 +93,13 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --tunne
   "sudo cat /etc/mongodb-app-credentials.conf"
 ```
 
-## 5. Network and firewall
+## Network and firewall
 
 - **MongoDB VM** has **no external IP**. SSH is via **IAP tunnel** (`gcloud compute ssh ... --tunnel-through-iap`).
 - **MongoDB (27017)** is bound to the VM’s internal IP (and 127.0.0.1). Firewall allows 27017 only from the GKE subnet and pod range; it is not exposed to the internet.
 - Expected reachability: GKE workloads and the VM itself (localhost). Use `mongodb_vm_internal_ip` from Terraform output for `MONGO_URI`.
 
-## 6. Verify
+## Verify
 
 - **MongoDB**: From the VM, `sudo systemctl status mongod` and `mongo -u admin -p ... --authenticationDatabase admin --eval 'db.runCommand({ping:1})'`.
 - **tododb**: `mongo -u todouser -p <APP_PASSWORD> --authenticationDatabase tododb --eval 'db.tasks.find()'` (from VM or app).

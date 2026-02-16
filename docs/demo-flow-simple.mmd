@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph Dev["Developer"]
+        CODE[Code + IaC]
+    end
+
+    subgraph CI["CI Pipeline"]
+        TV[Terraform Validate]
+        CS[Container Scan]
+        DG[Deploy Gate]
+    end
+
+    subgraph GCP["GCP"]
+        TF[Terraform Apply]
+        GKE[GKE + Tasky]
+        VM[MongoDB VM]
+    end
+
+    CODE --> TV --> TF
+    CODE --> CS --> DG
+    DG --> GKE
+    TF --> VM
+    TF --> GKE
+    GKE --> VM

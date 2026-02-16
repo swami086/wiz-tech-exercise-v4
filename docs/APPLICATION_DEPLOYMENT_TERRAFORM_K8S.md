@@ -19,7 +19,8 @@ The Kubernetes provider is configured in **`terraform/kubernetes.tf`** (GKE clus
 
 - [Infrastructure Deployment](INFRASTRUCTURE_DEPLOYMENT.md) completed (VPC, GKE, MongoDB VM).
 - [MongoDB Setup & Backup](MONGODB_SETUP_AND_BACKUP.md) completed (app user/password for `MONGODB_URI`).
-- Tasky image built and pushed to Artifact Registry (e.g. `./scripts/build-and-push-tasky.sh`).
+- **Terraform apply** has been run at least once so the Artifact Registry repository exists (`terraform/artifact_registry.tf`).
+- Tasky image built and pushed to the Terraform-managed Artifact Registry (e.g. `./scripts/build-and-push-tasky.sh`).
 - Terraform state already has the GKE cluster (so the Kubernetes provider can authenticate).
 - **For `kubectl` from your machine:** install [gke-gcloud-auth-plugin](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin) (e.g. `gcloud components install gke-gcloud-auth-plugin`). Without it, Terraform can still create resources; only local `kubectl` commands will fail.
 
@@ -69,7 +70,7 @@ From repo root:
 ./scripts/build-and-push-tasky.sh
 ```
 
-Or manually build and push to `REGION-docker.pkg.dev/PROJECT_ID/tasky-repo/tasky:latest`.
+Or manually build and push to the Terraform-managed repo (default: `REGION-docker.pkg.dev/PROJECT_ID/tasky-repo/tasky:latest`). The repository is created by `terraform/artifact_registry.tf`; run `terraform apply` before the first push.
 
 ### 2. Get MongoDB internal IP and set Terraform variables
 

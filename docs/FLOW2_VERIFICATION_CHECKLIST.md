@@ -59,3 +59,7 @@ cd terraform && terraform state list && terraform plan
 - **gke.tf**: master_authorized_networks 0.0.0.0/0 for demo (restrict in production).
 
 When all items are verified and screenshots captured, Flow 2 is complete. Proceed to **MongoDB Setup & Backup Automation**.
+
+**Lifecycle validation**: To confirm no drift after apply, run from repo root:  
+`export GCP_PROJECT_ID=wizdemo-487311 && ./scripts/validate-terraform-lifecycle.sh plan`  
+See [INFRASTRUCTURE_REPRODUCIBILITY_AND_LIFECYCLE.md](INFRASTRUCTURE_REPRODUCIBILITY_AND_LIFECYCLE.md) for full reproducibility and destroy/re-apply steps.

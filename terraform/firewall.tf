@@ -21,7 +21,8 @@ resource "google_compute_firewall" "ssh_to_vm" {
   target_tags   = [local.vm_network_tag]
 }
 
-# MongoDB (27017) from GKE nodes and pods only
+# MongoDB (27017) from GKE nodes and pods only (exercise: K8s network access only).
+# Output: mongodb_firewall_name (for Demo/showcase-iac-requirements.sh).
 resource "google_compute_firewall" "mongo_from_gke" {
   name    = "${var.environment}-allow-mongo-from-gke"
   project = var.project_id

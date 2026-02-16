@@ -41,7 +41,11 @@ kubernetes/*.generated.yaml
 tmp/
 temp/
 .cache/
+audit-log-samples/
 
 # Local overrides (may contain secrets)
 *.local
 *.local.*
+
+# Separate IaC repo clone (optional; do not commit into main repo)
+wiz-iac/

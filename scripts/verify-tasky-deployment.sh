@@ -62,20 +62,25 @@ if [[ $KUBE_EXIT -ne 0 ]]; then
     echo "If Terraform has already been applied with tasky_enabled=true, the namespace and resources exist; only kubectl access from this machine is missing."
   else
     echo "Error: could not read namespace $NAMESPACE. Run Terraform first:"
-    echo "  cd terraform && terraform apply -var-file=terraform.tfvars"
-    echo "  (Ensure tasky_enabled=true and tasky_mongodb_uri/tasky_secret_key are set in tfvars.)"
+    echo "  cd terraform && terraform apply -input=false -auto-approve"
+    echo "  (Ensure tasky_enabled=true in tfvars; tasky_mongodb_uri/tasky_secret_key can be left empty to derive/generate.)"
     echo ""
     echo "kubectl output: $KUBE_OUT"
   fi
   exit 1
 fi
 
-if [[ "$SKIP_ROLLOUT" != "true" ]]; then
+# Rollout restart to pull latest image (skip if deployment doesn't exist, e.g. Argo CD hasn't synced yet)
+DEPLOY_EXISTS=$(kubectl get deployment tasky -n "$NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ') || DEPLOY_EXISTS="0"
+if [[ "$SKIP_ROLLOUT" != "true" ]] && [[ "${DEPLOY_EXISTS:-0}" -gt 0 ]]; then
   echo ""
   echo "Restarting deployment to pull latest image..."
   kubectl rollout restart deployment/tasky -n "$NAMESPACE"
   echo "Waiting for rollout to complete..."
   kubectl rollout status deployment/tasky -n "$NAMESPACE" --timeout=120s
+elif [[ "${DEPLOY_EXISTS:-0}" -eq 0 ]]; then
+  echo ""
+  echo "Deployment 'tasky' not found. If using Argo CD: ensure kubernetes/ (with kustomization.yaml) is pushed to the Git repo, then: argocd app sync tasky"
 fi
 
 echo ""
@@ -91,7 +96,7 @@ echo ""
 echo "Load Balancer (Ingress) status:"
 kubectl get ingress -n "$NAMESPACE" 2>/dev/null || true
 
-LB_IP=$(kubectl get ingress -n "$NAMESPACE" -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+LB_IP=$(kubectl get ingress -n "$NAMESPACE" -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}' 2>/dev/null) || LB_IP=""
 if [[ -z "$LB_IP" ]]; then
   echo "Load Balancer IP not yet assigned. Wait a few minutes and run: kubectl get ingress -n $NAMESPACE"
 else
@@ -107,7 +112,7 @@ fi
 echo ""
 echo "--- Security / content validation ---"
 
-POD_NAME=$(kubectl get pods -n "$NAMESPACE" -l app=tasky -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+POD_NAME=$(kubectl get pods -n "$NAMESPACE" -l app=tasky -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || POD_NAME=""
 if [[ -n "$POD_NAME" ]]; then
   echo "wizexercise.txt in pod $POD_NAME:"
   kubectl exec -n "$NAMESPACE" "$POD_NAME" -- cat /app/wizexercise.txt 2>/dev/null || echo "  (exec failed)"

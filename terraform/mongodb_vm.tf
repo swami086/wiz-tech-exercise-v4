@@ -56,5 +56,14 @@ resource "google_compute_instance" "mongodb" {
     mongodb-backup-bucket = google_storage_bucket.mongodb_backups.name
   }
 
+  # Automated MongoDB 4.4 install, auth, tododb, and daily backup cron on first boot
+  metadata_startup_script = templatefile("${path.module}/scripts/mongodb-startup.sh.tpl", {
+    gcs_backup_bucket    = google_storage_bucket.mongodb_backups.name
+    mongo_admin_user     = var.mongodb_admin_user
+    mongo_admin_password = var.mongodb_admin_password
+    mongo_app_user       = var.mongodb_app_user
+    mongo_app_password   = var.mongodb_app_password
+  })
+
   allow_stopping_for_update = true
 }

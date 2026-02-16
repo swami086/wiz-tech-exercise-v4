@@ -1,8 +1,8 @@
-# Build and push Tasky image to GCP Artifact Registry (deploy gate).
-# On PR: build and verify only so the "deploy" required check can complete before merge.
-# On push to main: full build, verify, and push to Artifact Registry.
-# Requires repository secrets: GCP_SA_KEY, GCP_PROJECT_ID.
-name: Deploy (Build and Push)
+# Pipeline 2: Build & push application container and trigger Kubernetes deployment.
+# Runs after Phase 1 CI Gates succeed (workflow_run) so all scans pass before deploy.
+# On PR: build and verify only. On push to main (after Phase 1): push to Artifact Registry and K8s rollout.
+# Requires: GCP_SA_KEY, GCP_PROJECT_ID. Optional: GKE_CLUSTER_NAME, GKE_REGION.
+name: Deploy (Build, Push, and K8s Deploy)
 
 on:
   push:
@@ -15,37 +15,47 @@ on:
     paths:
       - 'tasky-main/**'
       - '.github/workflows/deploy.yml'
+  workflow_run:
+    workflows: ["Phase 1 CI Gates"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 env:
   GCP_REGION: us-central1
   ARTIFACT_REGISTRY_REPO: tasky-repo
+  GKE_CLUSTER_NAME: ${{ vars.GKE_CLUSTER_NAME || 'wiz-exercise-gke' }}
+  GKE_REGION: ${{ vars.GKE_REGION || 'us-central1' }}
+  TASKY_NAMESPACE: tasky
 
 jobs:
   deploy:
     name: deploy
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     permissions:
       contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Authenticate to Google Cloud
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Ensure Artifact Registry repo exists
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
         run: |
           gcloud artifacts repositories describe ${{ env.ARTIFACT_REGISTRY_REPO }} \
             --location=${{ env.GCP_REGION }} --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null || \
@@ -56,14 +66,14 @@ jobs:
             --project=${{ secrets.GCP_PROJECT_ID }}
 
       - name: Configure Docker for Artifact Registry
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build and verify image
         id: build
         run: |
-          if [[ "${{ github.event_name }}" == "push" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:${{ github.sha }}"
           else
             IMAGE="tasky:${{ github.sha }}"
@@ -73,13 +83,22 @@ jobs:
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Push to Artifact Registry
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
         run: |
           docker push ${{ steps.build.outputs.image }}
 
       - name: Tag as latest and push
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
         run: |
           LATEST="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:latest"
           docker tag ${{ steps.build.outputs.image }} "$LATEST"
           docker push "$LATEST"
+
+      - name: Trigger Kubernetes deployment
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        run: |
+          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
+            --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
+          kubectl rollout restart deployment/tasky -n "${{ env.TASKY_NAMESPACE }}"
+          kubectl rollout status deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" --timeout=120s
+        continue-on-error: true

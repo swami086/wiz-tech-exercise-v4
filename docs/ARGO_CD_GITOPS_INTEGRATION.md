@@ -22,7 +22,7 @@ This document describes how to deploy the Tasky app using **Argo CD** in a GitOp
 
 ## Prerequisites
 
-- **GKE cluster** (e.g. created by Terraform in this repo) and `kubectl` access.
+- **GKE cluster** (e.g. created by Terraform in this repo) and `kubectl` access. When using private GKE nodes, **Cloud NAT** (`terraform/network.tf`) is required so nodes can pull images from quay.io and Artifact Registry; it is created by a standard `terraform apply` and removed by `terraform destroy`.
 - **Argo CD** installed in the cluster (see [Install Argo CD](#install-argo-cd)).
 - **Git repo** accessible from the cluster (e.g. public repo or Argo CD repo credentials).
 - **Tasky image** built and pushed to Artifact Registry (e.g. `./scripts/build-and-push-tasky.sh`).
