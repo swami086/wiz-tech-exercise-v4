@@ -34,19 +34,19 @@ jobs:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Authenticate to Google Cloud
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Ensure Artifact Registry repo exists
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           set -e
           if gcloud artifacts repositories describe ${{ env.ARTIFACT_REGISTRY_REPO }} \
@@ -69,14 +69,14 @@ jobs:
           exit $ret
 
       - name: Configure Docker for Artifact Registry
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build and verify image
         id: build
         run: |
-          if [[ "${{ github.event_name }}" == "push" ]] || [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_run" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:${{ github.sha }}"
           else
             IMAGE="tasky:${{ github.sha }}"
@@ -86,25 +86,25 @@ jobs:
           echo "image=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Push to Artifact Registry
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           docker push ${{ steps.build.outputs.image }}
 
       - name: Tag as latest and push
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           LATEST="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:latest"
           docker tag ${{ steps.build.outputs.image }} "$LATEST"
           docker push "$LATEST"
 
       - name: Get GKE credentials
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
             --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
 
       - name: Apply Argo CD Application (app repo deploys the app)
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           REPO_URL="https://github.com/${{ github.repository }}"
           # Pin sync to the commit we built (Argo CD best practice: immutable targetRevision).
@@ -117,8 +117,25 @@ jobs:
         continue-on-error: true
 
       - name: Trigger Kubernetes deployment (rollout new image)
-        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           kubectl rollout restart deployment/tasky -n "${{ env.TASKY_NAMESPACE }}"
           kubectl rollout status deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" --timeout=120s
+        continue-on-error: true
+
+      - name: Application URL
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "## Application URL" >> $GITHUB_STEP_SUMMARY
+          for i in $(seq 1 12); do
+            IP=$(kubectl get ingress -n "${{ env.TASKY_NAMESPACE }}" tasky -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            if [ -n "$IP" ]; then
+              echo "**Live URL:** http://$IP" >> $GITHUB_STEP_SUMMARY
+              echo "App is available at: http://$IP"
+              exit 0
+            fi
+            echo "Waiting for Ingress IP... ($i/12)"
+            sleep 10
+          done
+          echo "Ingress IP not yet assigned. Check the cluster: \`kubectl get ingress -n ${{ env.TASKY_NAMESPACE }} tasky\`" >> $GITHUB_STEP_SUMMARY
         continue-on-error: true
