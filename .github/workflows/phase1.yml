@@ -213,13 +213,25 @@ jobs:
       - name: Ensure Artifact Registry repo exists
         if: github.ref == 'refs/heads/main'
         run: |
-          gcloud artifacts repositories describe ${{ env.ARTIFACT_REGISTRY_REPO }} \
-            --location=${{ env.GCP_REGION }} --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null || \
-          (gcloud services enable artifactregistry.googleapis.com --project=${{ secrets.GCP_PROJECT_ID }} && \
-          gcloud artifacts repositories create ${{ env.ARTIFACT_REGISTRY_REPO }} \
+          set -e
+          if gcloud artifacts repositories describe ${{ env.ARTIFACT_REGISTRY_REPO }} \
+            --location=${{ env.GCP_REGION }} --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null; then
+            echo "Repository ${{ env.ARTIFACT_REGISTRY_REPO }} already exists, skipping create."
+            exit 0
+          fi
+          gcloud services enable artifactregistry.googleapis.com --project=${{ secrets.GCP_PROJECT_ID }}
+          out=$(gcloud artifacts repositories create ${{ env.ARTIFACT_REGISTRY_REPO }} \
             --repository-format=docker --location=${{ env.GCP_REGION }} \
             --description="Tasky application container images for Wiz Exercise" \
-            --project=${{ secrets.GCP_PROJECT_ID }})
+            --project=${{ secrets.GCP_PROJECT_ID }} 2>&1)
+          ret=$?
+          if [[ $ret -eq 0 ]]; then exit 0; fi
+          if echo "$out" | grep -qi "already exists"; then
+            echo "Repository already exists (e.g. created by Terraform), continuing."
+            exit 0
+          fi
+          echo "$out"
+          exit $ret
 
       - name: Configure Docker for Artifact Registry
         if: github.ref == 'refs/heads/main'
