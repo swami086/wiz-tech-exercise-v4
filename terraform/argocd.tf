@@ -108,6 +108,8 @@ resource "null_resource" "argocd_application_tasky" {
         kubectl get crd applications.argoproj.io 2>/dev/null && break
         sleep 10
       done
+      echo "Waiting for Argo CD application controller to be available..."
+      kubectl wait --for=condition=available deployment/argocd-application-controller -n argocd --timeout=120s 2>/dev/null || true
       TMPF=$(mktemp)
       cat > "$TMPF" << 'ARGOCD_APP'
 ${templatefile("${path.module}/argocd-application.yaml.tpl", {

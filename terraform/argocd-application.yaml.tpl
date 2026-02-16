@@ -27,6 +27,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - PruneLast=true
+      - ApplyOutOfSyncOnly=true
     retry:
       limit: 5
       backoff:
@@ -38,3 +39,8 @@ spec:
       kind: Secret
       jsonPointers:
         - /data
+    # Allow CI rollout restart without Argo CD reverting the pod template change
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - .spec.template.metadata.annotations."kubectl.kubernetes.io/restartedAt"

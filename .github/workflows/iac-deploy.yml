@@ -70,6 +70,20 @@ jobs:
       TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET || format('{0}-tfstate-wiz-exercise', secrets.GCP_PROJECT_ID) }}
 
     steps:
+      - name: Check deploy secrets
+        run: |
+          if [ -z "$MONGODB_ADMIN_PASSWORD" ] || [ -z "$MONGODB_APP_PASSWORD" ]; then
+            echo "::error::MONGODB_ADMIN_PASSWORD and MONGODB_APP_PASSWORD must be set (Settings → Secrets). At least 32 chars each."
+            exit 1
+          fi
+          if [ ${#MONGODB_ADMIN_PASSWORD} -lt 32 ] || [ ${#MONGODB_APP_PASSWORD} -lt 32 ]; then
+            echo "::error::Each MongoDB secret must be at least 32 characters."
+            exit 1
+          fi
+        env:
+          MONGODB_ADMIN_PASSWORD: ${{ secrets.MONGODB_ADMIN_PASSWORD }}
+          MONGODB_APP_PASSWORD: ${{ secrets.MONGODB_APP_PASSWORD }}
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -77,6 +91,11 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -91,10 +110,37 @@ jobs:
             -backend-config="prefix=terraform/state"
         working-directory: ${{ env.TF_WORKING_DIR }}
 
+      - name: Install GKE auth plugin (for Terraform null_resource kubectl)
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
       - name: Terraform Plan
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          TF_VAR_mongodb_admin_password: ${{ secrets.MONGODB_ADMIN_PASSWORD }}
+          TF_VAR_mongodb_app_password: ${{ secrets.MONGODB_APP_PASSWORD }}
         run: terraform plan -input=false -out=tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Get application URL (after Argo CD sync)
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
+          GKE_NAME=$(terraform output -raw gke_cluster_name 2>/dev/null || echo "wiz-exercise-gke")
+          GKE_REGION=$(terraform output -raw region 2>/dev/null || echo "us-central1")
+          gcloud container clusters get-credentials "$GKE_NAME" --region "$GKE_REGION" --project "${{ secrets.GCP_PROJECT_ID }}" 2>/dev/null || true
+          echo "## Application URL (after app pipeline)" >> $GITHUB_STEP_SUMMARY
+          for i in $(seq 1 6); do
+            IP=$(kubectl get ingress -n tasky tasky -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            if [ -n "$IP" ]; then
+              echo "**Live URL:** http://$IP" >> $GITHUB_STEP_SUMMARY
+              exit 0
+            fi
+            echo "Waiting for ingress IP... ($i/6)"
+            sleep 15
+          done
+          echo "Run the **Phase 1 CI Gates** workflow to build/push image and deploy; app URL will appear there." >> $GITHUB_STEP_SUMMARY
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        continue-on-error: true
