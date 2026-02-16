@@ -2,6 +2,10 @@
 # When argocd_enabled=true: installs Argo CD, creates tasky namespace+secret, and an Application
 # that syncs the Tasky app from kubernetes/ in the Git repo.
 # Set tasky_enabled=false when using argocd_enabled to avoid conflicting deployments.
+#
+# Destroy/recreate: terraform destroy removes null_resources from state; terraform apply
+# recreates cluster → Argo CD install (--server-side --force-conflicts for CRD limits) → Application.
+# Cloud NAT (network.tf) must exist for private GKE nodes to pull Argo CD images from quay.io.
 
 locals {
   argocd_count = var.argocd_enabled ? 1 : 0
@@ -11,7 +15,8 @@ locals {
   # MongoDB URI and secret key (same derivation as tasky_k8s when not overridden)
   argocd_mongodb_password_encoded = replace(replace(replace(replace(replace(replace(replace(replace(var.mongodb_app_password, "%", "%25"), "/", "%2F"), "?", "%3F"), "#", "%23"), "[", "%5B"), "]", "%5D"), "@", "%40"), ":", "%3A")
   argocd_mongodb_uri              = coalesce(var.tasky_mongodb_uri, "mongodb://${var.mongodb_app_user}:${local.argocd_mongodb_password_encoded}@${google_compute_instance.mongodb.network_interface[0].network_ip}:27017/tododb")
-  argocd_secret_key               = coalesce(var.tasky_secret_key, try(random_password.argocd_tasky_jwt[0].result, ""))
+  # When argocd_enabled=false, random_password.argocd_tasky_jwt has count=0 so [0] is invalid. Use var when set; else try(random, ""). No coalesce() so we never get "no non-null arguments" when both empty.
+  argocd_secret_key               = length(trimspace(var.tasky_secret_key)) > 0 ? var.tasky_secret_key : try(random_password.argocd_tasky_jwt[0].result, "")
 }
 
 resource "random_password" "argocd_tasky_jwt" {
