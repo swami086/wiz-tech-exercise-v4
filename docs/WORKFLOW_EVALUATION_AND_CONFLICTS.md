@@ -85,7 +85,12 @@ Evaluation of CI/CD pipelines across the **main repo (Wiz)** and **wiz-iac** rep
 
 ---
 
-## 6. Optional follow-ups
+## 6. Argo CD: IaC vs app repo
+
+- **IaC (wiz-iac):** Installs Argo CD and creates the `tasky` namespace + `tasky-secret` (MongoDB URI, secret key). It does **not** create the Argo CD Application.
+- **App repo:** The Deploy workflow applies the Argo CD Application (`argocd/application-tasky.yaml`) with the repo URL and image substituted, then runs `kubectl rollout restart`. So the **application is deployed by the app repo**, not by IaC.
+
+## 7. Optional follow-ups
 
 - Add repo labels (e.g. `scan-report`, `automated`) and pass them to `create-pull-request` for filtering.
 - If wiz-iac adds more scanners (e.g. Checkov, TFLint), include their output in the same `docs/scan-reports/iac-deploy-scan-report.md` or a dedicated file and keep a single report PR per run.

@@ -97,11 +97,28 @@ jobs:
           docker tag ${{ steps.build.outputs.image }} "$LATEST"
           docker push "$LATEST"
 
-      - name: Trigger Kubernetes deployment
+      - name: Get GKE credentials
         if: github.event_name == 'push' || github.event_name == 'workflow_run'
         run: |
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
             --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Apply Argo CD Application (app repo deploys the app)
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        run: |
+          REPO_URL="https://github.com/${{ github.repository }}"
+          # Pin sync to the commit we built (Argo CD best practice: immutable targetRevision).
+          TARGET_REVISION="${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
+          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/tasky:latest"
+          sed -e "s|REPO_URL_PLACEHOLDER|${REPO_URL}|g" \
+              -e "s|TARGET_REVISION_PLACEHOLDER|${TARGET_REVISION}|g" \
+              -e "s|IMAGE_PLACEHOLDER|${IMAGE}|g" \
+              argocd/application-tasky.yaml | kubectl apply -n argocd -f -
+        continue-on-error: true
+
+      - name: Trigger Kubernetes deployment (rollout new image)
+        if: github.event_name == 'push' || github.event_name == 'workflow_run'
+        run: |
           kubectl rollout restart deployment/tasky -n "${{ env.TASKY_NAMESPACE }}"
           kubectl rollout status deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" --timeout=120s
         continue-on-error: true

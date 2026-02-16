@@ -1,10 +1,8 @@
 # Argo CD Application for Tasky (Wiz Technical Exercise V4 – GitOps).
-# Deploys the Tasky app from the kubernetes/ path in this repo.
-# Prerequisites: Argo CD installed; repo added to Argo CD; tasky-secret exists in namespace tasky.
-#
-# Apply: kubectl apply -f argocd/application-tasky.yaml -n argocd
-# Replace REPO_URL and optionally TARGET_REVISION before apply, or patch after.
-# Image override: set spec.source.kustomize.images to your Artifact Registry image.
+# The app repo deploys the app: Deploy workflow applies this file with repo URL, targetRevision (commit SHA), and image substituted.
+# IaC installs Argo CD and creates tasky namespace + tasky-secret; this Application is applied by the app pipeline.
+# Best practices applied: immutable targetRevision (SHA), ignoreDifferences for Secret + rollout, syncOptions per Argo CD docs.
+# Placeholders: REPO_URL_PLACEHOLDER, TARGET_REVISION_PLACEHOLDER, IMAGE_PLACEHOLDER (replaced in Deploy workflow).
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -19,15 +17,14 @@ metadata:
 spec:
   project: default
   source:
-    # Replace with your Git repo URL (HTTPS or SSH).
-    repoURL: https://github.com/your-org/Wiz
-    targetRevision: main
+    repoURL: REPO_URL_PLACEHOLDER
+    # Pinned to commit SHA by CI for immutable sync (Argo CD best practice: use tag or SHA, not HEAD).
+    targetRevision: TARGET_REVISION_PLACEHOLDER
     path: kubernetes
     kustomize:
-      # Override image for your GCP Artifact Registry (replace PROJECT, REGION, TAG).
-      # Example: us-west1-docker.pkg.dev/myproject/tasky-repo/tasky:latest
       images:
-        - tasky:latest=tasky:latest
+        # Replaced in Deploy workflow: tasky:latest=<artifact-registry-image>
+        - tasky:latest=IMAGE_PLACEHOLDER
   destination:
     server: https://kubernetes.default.svc
     namespace: tasky
@@ -38,6 +35,8 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - PruneLast=true
+      # Only apply when out of sync (reduces unnecessary full syncs).
+      - ApplyOutOfSyncOnly=true
     retry:
       limit: 5
       backoff:
@@ -45,8 +44,13 @@ spec:
         factor: 2
         maxDuration: 3m
   ignoreDifferences:
-    # Ignore Secret data drift (secret is managed outside Git).
+    # Ignore Secret data drift (secret is managed by IaC).
     - group: ""
       kind: Secret
       jsonPointers:
         - /data
+    # Ignore rollout restarts from CI (kubectl rollout restart) so Argo CD does not revert.
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - .spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"]
