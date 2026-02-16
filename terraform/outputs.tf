@@ -98,8 +98,8 @@ output "artifact_registry_repository_url" {
 # --- Tasky app (when deployed via Terraform Kubernetes provider) ---
 
 output "tasky_namespace" {
-  description = "Kubernetes namespace for Tasky app (when tasky_enabled = true)"
-  value       = try(kubernetes_namespace_v1.tasky[0].metadata[0].name, null)
+  description = "Kubernetes namespace for Tasky app (tasky_enabled or argocd_enabled)"
+  value       = try(kubernetes_namespace_v1.tasky[0].metadata[0].name, try(kubernetes_namespace_v1.tasky_argocd[0].metadata[0].name, null))
 }
 
 output "tasky_ingress_name" {

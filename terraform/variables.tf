@@ -175,13 +175,13 @@ variable "tasky_secret_key" {
 variable "argocd_enabled" {
   description = "Install Argo CD and deploy Tasky via GitOps (from kubernetes/ in Git). Set tasky_enabled=false when using this. Requires argocd_git_repo_url."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "argocd_git_repo_url" {
-  description = "Git repository URL for Argo CD to sync (e.g. https://github.com/your-org/Wiz). Required when argocd_enabled=true."
+  description = "Git repository URL for Argo CD to sync (e.g. https://github.com/your-org/wiz-tech-exercise-v4). Required when argocd_enabled=true."
   type        = string
-  default     = ""
+  default     = "https://github.com/swami086/wiz-tech-exercise-v4"
 }
 
 variable "argocd_git_revision" {

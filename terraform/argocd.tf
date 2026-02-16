@@ -103,6 +103,11 @@ resource "null_resource" "argocd_application_tasky" {
       gcloud container clusters get-credentials ${google_container_cluster.primary.name} \
         --region ${google_container_cluster.primary.location} \
         --project ${var.project_id}
+      echo "Waiting for Argo CD CRDs to be ready..."
+      for i in 1 2 3 4 5 6 7 8 9 10; do
+        kubectl get crd applications.argoproj.io 2>/dev/null && break
+        sleep 10
+      done
       TMPF=$(mktemp)
       cat > "$TMPF" << 'ARGOCD_APP'
 ${templatefile("${path.module}/argocd-application.yaml.tpl", {
@@ -114,7 +119,7 @@ ARGOCD_APP
       kubectl apply -n argocd -f "$TMPF"
       rm -f "$TMPF"
     EOT
-}
+  }
 
-depends_on = [null_resource.argocd_install]
+  depends_on = [null_resource.argocd_install]
 }
