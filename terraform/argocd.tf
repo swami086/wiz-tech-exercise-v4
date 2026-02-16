@@ -16,7 +16,7 @@ locals {
   argocd_mongodb_password_encoded = replace(replace(replace(replace(replace(replace(replace(replace(var.mongodb_app_password, "%", "%25"), "/", "%2F"), "?", "%3F"), "#", "%23"), "[", "%5B"), "]", "%5D"), "@", "%40"), ":", "%3A")
   argocd_mongodb_uri              = coalesce(var.tasky_mongodb_uri, "mongodb://${var.mongodb_app_user}:${local.argocd_mongodb_password_encoded}@${google_compute_instance.mongodb.network_interface[0].network_ip}:27017/tododb")
   # When argocd_enabled=false do not reference random_password.argocd_tasky_jwt (count=0, so [0] would be empty tuple). Only reference it in the true branch.
-  argocd_secret_key               = var.argocd_enabled ? (length(trimspace(var.tasky_secret_key)) > 0 ? var.tasky_secret_key : random_password.argocd_tasky_jwt[0].result) : ""
+  argocd_secret_key = var.argocd_enabled ? (length(trimspace(var.tasky_secret_key)) > 0 ? var.tasky_secret_key : random_password.argocd_tasky_jwt[0].result) : ""
 }
 
 resource "random_password" "argocd_tasky_jwt" {
