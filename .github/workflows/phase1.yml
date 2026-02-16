@@ -1,5 +1,5 @@
-# Phase 1 CI Gates – mirrors demo-cicd-end-to-end.sh Phase 1.
-# Runs: terraform validate + container build/Trivy + deploy gate (build + wizexercise check).
+# Phase 1 CI Gates – all scans must succeed before deploy-gate runs.
+# Runs: terraform-validate, container-scan (Trivy+Grype), hadolint, semgrep, trivy-fs; then deploy-gate (build+verify).
 name: Phase 1 CI Gates
 
 on:
@@ -94,7 +94,7 @@ jobs:
         id: scan-grype
         with:
           image: 'tasky:${{ github.sha }}'
-          fail-build: false
+          fail-build: true
           severity-cutoff: 'critical'
 
       - name: Upload Grype SARIF
@@ -166,7 +166,8 @@ jobs:
           format: 'sarif'
           output: 'trivy-fs.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          exit-code: '0'
+          exit-code: '1'
+          vuln-type: 'os,library'
 
       - name: Upload Trivy FS SARIF
         uses: github/codeql-action/upload-sarif@v3
@@ -176,6 +177,7 @@ jobs:
   deploy-gate:
     name: deploy-gate
     runs-on: ubuntu-latest
+    needs: [terraform-validate, container-scan, hadolint, semgrep, trivy-fs]
     permissions:
       contents: read
 
