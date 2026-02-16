@@ -66,6 +66,7 @@ fi
 # Grant roles needed for Terraform (VPC, GKE, Compute VM, GCS, IAM, Logging, SCC, Monitoring alerts)
 # projectIamAdmin required to create IAM bindings (e.g. for MongoDB VM SA).
 # monitoring.alertPolicyEditor required for GCP Security Tooling alert policies.
+# artifactregistry.admin and iam.serviceAccountAdmin required for terraform destroy (IaC Destroy workflow).
 echo "Granting IAM roles to service account..."
 for role in \
   roles/compute.admin \
@@ -76,7 +77,9 @@ for role in \
   roles/logging.configWriter \
   roles/securitycenter.admin \
   roles/monitoring.alertPolicyEditor \
-  roles/monitoring.notificationChannelEditor; do
+  roles/monitoring.notificationChannelEditor \
+  roles/artifactregistry.admin \
+  roles/iam.serviceAccountAdmin; do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$role" \
