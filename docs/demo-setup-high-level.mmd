@@ -1,0 +1,172 @@
+# Wiz Demo Setup – High-Level Architecture
+
+This diagram reflects the actual Terraform, scripts, and GitHub workflows in the repo.
+
+```mermaid
+flowchart TB
+  subgraph Entry["How to run the demo"]
+    direction TB
+    DEMO["demo-cicd-end-to-end.sh<br/>Full CI/CD demo (local gates + optional GitHub + verify)"]
+    IAC["iac-deploy.yml trigger<br/>Push terraform/** to main"]
+    APP["deploy.yml trigger<br/>Push tasky-main/** to main"]
+    PR["PR with vulnerabilities<br/>container-scan + Trivy showcase"]
+  end
+
+  subgraph VCS["Source of truth"]
+    GITHUB[("GitHub repo<br/>terraform/ · tasky-main/ · kubernetes/ · .github/workflows/")]
+  end
+
+  subgraph CI["CI/CD Pipelines"]
+    direction TB
+    subgraph IaC_Pipeline["IaC Pipeline (iac-deploy.yml)"]
+      TV["Terraform validate + fmt"]
+      TFSEC["tfsec (IaC scan)"]
+      TPLAN["terraform plan"]
+      TAPPLY["terraform apply"]
+      TV --> TFSEC --> TPLAN --> TAPPLY
+    end
+    subgraph App_Pipeline["App Pipeline (deploy.yml)"]
+      BUILD["Build Tasky image"]
+      VERIFY["Verify wizexercise.txt"]
+      PUSH["Push to Artifact Registry"]
+      ROLLOUT["kubectl rollout restart"]
+      BUILD --> VERIFY --> PUSH --> ROLLOUT
+    end
+    subgraph Gates["Security gates (phase1 / PR)"]
+      TVALID["terraform-validate"]
+      CSCAN["container-scan (Trivy CRITICAL/HIGH)"]
+      DGATE["deploy-gate (build + verify)"]
+    end
+  end
+
+  subgraph GCP["GCP Project (Terraform-managed)"]
+    direction TB
+
+    subgraph Network["Network"]
+      VPC["VPC (regional)"]
+      GKE_SUB["GKE subnet (private)<br/>pods 10.1.0.0/16, services 10.2.0.0/20"]
+      VM_SUB["VM subnet"]
+      NAT["Cloud NAT (egress for private GKE)"]
+      VPC --> GKE_SUB
+      VPC --> VM_SUB
+      VPC --> NAT
+    end
+
+    subgraph Compute["Compute"]
+      GKE["GKE cluster (private nodes)<br/>authorized networks for control plane"]
+      VM["MongoDB VM (e2-medium)<br/>Debian 10 · no external IP · IAP SSH"]
+      GKE_SUB --> GKE
+      VM_SUB --> VM
+    end
+
+    subgraph Data["Data & storage"]
+      MONGO[("MongoDB 4.4 on VM<br/>auth · tododb · startup script")]
+      BUCKET[("Backup GCS bucket<br/>public read/list · versioning")]
+      VM --> MONGO
+      MONGO --> BUCKET
+    end
+
+    subgraph App_Runtime["Application runtime"]
+      AR["Artifact Registry (tasky-repo)"]
+      subgraph Deploy_Path["Deployment path (one of)"]
+        TF_TASKY["Terraform K8s<br/>tasky_enabled=true"]
+        ARGO["Argo CD GitOps<br/>argocd_enabled=true · syncs kubernetes/ from Git"]
+      end
+      TASKY["Tasky app on GKE<br/>MONGODB_URI · SECRET_KEY · wizexercise.txt"]
+      LB["GCE Ingress / Load Balancer"]
+      GKE --> TF_TASKY
+      GKE --> ARGO
+      TF_TASKY --> TASKY
+      ARGO --> TASKY
+      TASKY --> LB
+      TASKY --> MONGO
+      AR --> TASKY
+    end
+
+    subgraph Firewall["Firewall (intentional for demo)"]
+      FW_SSH["SSH (22) from 0.0.0/0 → MongoDB VM tag"]
+      FW_MONGO["MongoDB (27017) from GKE subnet + pods only"]
+    end
+
+    subgraph Security["Cloud security & observability"]
+      AUDIT["Audit logs (Data Access: Storage, Compute)"]
+      ORG_POLICY["Org Policy: requireOsLogin (optional)"]
+      ALERTS["Monitoring alerts (optional)<br/>firewall change · bucket IAM change"]
+    end
+  end
+
+  %% Flows
+  Entry --> VCS
+  GITHUB --> CI
+  IaC_Pipeline --> GCP
+  App_Pipeline --> AR
+  App_Pipeline --> GKE
+  Gates --> GITHUB
+  TAPPLY --> Network
+  TAPPLY --> Compute
+  TAPPLY --> Data
+  TAPPLY --> Firewall
+  TAPPLY --> Security
+  TAPPLY --> AR
+  DEMO --> CI
+  DEMO --> GCP
+```
+
+---
+
+## Simplified flow: Code to running app
+
+```mermaid
+flowchart LR
+  subgraph Dev["Developer"]
+    CODE["Code changes<br/>terraform/ or tasky-main/"]
+  end
+
+  subgraph CI["CI (GitHub Actions)"]
+    IAC["IaC: validate → plan → apply"]
+    SCAN["Container: Trivy gate"]
+    DEPLOY["Deploy: build → push AR → rollout"]
+  end
+
+  subgraph GCP["GCP"]
+    TF["Terraform<br/>VPC, GKE, VM, bucket, firewall"]
+    GKE["GKE cluster"]
+    TASKY["Tasky pods"]
+    MONGO["MongoDB on VM"]
+  end
+
+  CODE --> IAC
+  CODE --> SCAN
+  CODE --> DEPLOY
+  IAC --> TF
+  TF --> GKE
+  TF --> MONGO
+  DEPLOY --> GKE
+  GKE --> TASKY
+  TASKY --> MONGO
+```
+
+---
+
+## Terraform modules (file → responsibility)
+
+| File | Responsibility |
+|------|----------------|
+| `network.tf` | VPC, GKE subnet (private), VM subnet, Cloud NAT |
+| `gke.tf` | GKE cluster (private nodes), node pool, node SA, IAM for logging/AR |
+| `mongodb_vm.tf` | MongoDB VM (Debian 10), VM SA (compute.admin), startup script (Mongo 4.4, backup cron) |
+| `firewall.tf` | SSH 0.0.0/0 → VM tag; MongoDB 27017 from GKE only |
+| `backup_bucket.tf` | GCS bucket, public read/list, VM SA objectCreator |
+| `artifact_registry.tf` | Artifact Registry Docker repo for Tasky |
+| `tasky_k8s.tf` | Optional: namespace, Secret, RBAC (cluster-admin), Deployment, Service, Ingress |
+| `argocd.tf` | Optional: Argo CD install, tasky namespace/secret, Application from Git |
+| `audit_logs.tf` | Data Access audit for Storage + Compute |
+| `org_policy.tf` | Optional: requireOsLogin |
+| `monitoring_alerts.tf` | Optional: log metrics + alert policies (firewall, bucket IAM) |
+
+---
+
+## Deployment modes
+
+- **Terraform-managed Tasky:** `tasky_enabled = true`, `argocd_enabled = false`. Terraform creates namespace, Secret, Deployment, Service, Ingress. Deploy workflow does `kubectl rollout restart`.
+- **Argo CD (GitOps):** `tasky_enabled = false`, `argocd_enabled = true`, `argocd_git_repo_url` set. Argo CD syncs `kubernetes/` from Git. Same image from Artifact Registry; Git is source of truth for manifests.

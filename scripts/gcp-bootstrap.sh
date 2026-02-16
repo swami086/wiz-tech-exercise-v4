@@ -38,7 +38,7 @@ echo ""
 # Set project
 gcloud config set project "$GCP_PROJECT_ID"
 
-# Enable required APIs (Compute, GKE, Storage, Logging, SCC)
+# Enable required APIs (Compute, GKE, Storage, Logging, SCC, Monitoring for alert policies)
 echo "Enabling APIs..."
 gcloud services enable \
   compute.googleapis.com \
@@ -46,6 +46,7 @@ gcloud services enable \
   storage.googleapis.com \
   storage-api.googleapis.com \
   logging.googleapis.com \
+  monitoring.googleapis.com \
   securitycenter.googleapis.com \
   iam.googleapis.com \
   iamcredentials.googleapis.com \
@@ -62,8 +63,9 @@ else
     --project="$GCP_PROJECT_ID"
 fi
 
-# Grant roles needed for Terraform (VPC, GKE, Compute VM, GCS, IAM, Logging, SCC)
+# Grant roles needed for Terraform (VPC, GKE, Compute VM, GCS, IAM, Logging, SCC, Monitoring alerts)
 # projectIamAdmin required to create IAM bindings (e.g. for MongoDB VM SA).
+# monitoring.alertPolicyEditor required for GCP Security Tooling alert policies.
 echo "Granting IAM roles to service account..."
 for role in \
   roles/compute.admin \
@@ -72,7 +74,9 @@ for role in \
   roles/iam.serviceAccountUser \
   roles/resourcemanager.projectIamAdmin \
   roles/logging.configWriter \
-  roles/securitycenter.admin; do
+  roles/securitycenter.admin \
+  roles/monitoring.alertPolicyEditor \
+  roles/monitoring.notificationChannelEditor; do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$role" \

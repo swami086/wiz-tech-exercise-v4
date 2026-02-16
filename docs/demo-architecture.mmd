@@ -1,0 +1,61 @@
+flowchart TB
+    subgraph Scripts["Demo Scripts"]
+        WIZ[wiz-exercise-demo]
+        CICD[demo-cicd-end-to-end]
+        IAC[showcase-iac]
+        PR[create-demo-pr]
+        TFL[terraform-destroy-recreate]
+    end
+
+    subgraph CI["CI/CD Pipeline"]
+        VCS[("GitHub")]
+        GATES["terraform-validate · container-scan · deploy-gate"]
+        TRIVY[Trivy Scan]
+        BUILD[Build & Push]
+        AR[("Artifact Registry")]
+    end
+
+    subgraph Deploy["Deployment Paths"]
+        subgraph GitOps["GitOps – Argo CD"]
+            GIT["kubernetes/ in Git<br/>(source of truth for K8s)"]
+            ARGO["Argo CD<br/>Watches Git repo · Syncs manifests to GKE"]
+            GIT --> ARGO
+        end
+        subgraph IaC["Terraform"]
+            TF["Terraform Apply<br/>Provisions infra + K8s"]
+        end
+    end
+
+    subgraph Runtime["Runtime"]
+        GKE[GKE Cluster]
+        TASKY[Tasky App]
+        LB[Ingress / LB]
+        GKE --> TASKY --> LB
+    end
+
+    subgraph Data["Data Layer"]
+        VM[MongoDB VM]
+        MONGO[("MongoDB")]
+        BUCKET[("Backup Bucket")]
+        VM --> MONGO --> BUCKET
+    end
+
+    subgraph Sec["Cloud Native Security"]
+        AL[Audit Logs]
+        OP[Org Policy]
+        MA[Alerts]
+    end
+
+    Scripts --> CI
+    VCS --> GATES
+    GATES --> TRIVY
+    GATES --> BUILD
+    BUILD --> AR
+    AR --> ARGO
+    AR --> TF
+    ARGO --> GKE
+    TF --> GKE
+    TF --> VM
+    TASKY --> MONGO
+    Runtime --> Sec
+    Data --> Sec

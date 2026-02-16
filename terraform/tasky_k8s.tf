@@ -1,11 +1,26 @@
 # Tasky app deployment via Terraform Kubernetes provider (Wiz Technical Exercise V4).
 # Deploys namespace, Secret, RBAC (intentional cluster-admin misconfiguration), Deployment, Service, Ingress.
-# Set tasky_enabled = true only after supplying tasky_mongodb_uri and tasky_secret_key; optionally set tasky_image (or use default).
+# When tasky_enabled = true: leave tasky_mongodb_uri and tasky_secret_key empty to use Terraform-managed
+# MongoDB connection string (from this stack) and a generated JWT secret; or set them to override.
 # Build and push image first: ./scripts/build-and-push-tasky.sh
 
 locals {
   tasky_count = var.tasky_enabled ? 1 : 0
-  tasky_image = coalesce(var.tasky_image, "${var.region}-docker.pkg.dev/${var.project_id}/tasky-repo/tasky:latest")
+  ar_location = coalesce(var.artifact_registry_location, var.region)
+  tasky_image = coalesce(var.tasky_image, "${local.ar_location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.tasky.repository_id}/tasky:latest")
+  # Encode password for URI (e.g. base64 can contain / + = which break parsing)
+  mongodb_app_password_encoded = replace(replace(replace(replace(replace(replace(replace(replace(var.mongodb_app_password, "%", "%25"), "/", "%2F"), "?", "%3F"), "#", "%23"), "[", "%5B"), "]", "%5D"), "@", "%40"), ":", "%3A")
+  # Derive MongoDB URI from this stack's VM when not overridden (enables destroy/recreate without hardcoded tfvars)
+  tasky_mongodb_uri_effective = coalesce(var.tasky_mongodb_uri, "mongodb://${var.mongodb_app_user}:${local.mongodb_app_password_encoded}@${google_compute_instance.mongodb.network_interface[0].network_ip}:27017/tododb")
+  tasky_secret_key_effective  = var.tasky_enabled ? (length(var.tasky_secret_key) > 0 ? var.tasky_secret_key : random_password.tasky_jwt[0].result) : ""
+}
+
+# Generated JWT secret when tasky_enabled and tasky_secret_key is not set (so destroy/recreate needs no tfvars)
+resource "random_password" "tasky_jwt" {
+  count = local.tasky_count
+
+  length  = 32
+  special = true
 }
 
 # --- Namespace ---
@@ -14,8 +29,8 @@ resource "kubernetes_namespace_v1" "tasky" {
 
   lifecycle {
     precondition {
-      condition     = local.tasky_count == 0 || (length(var.tasky_mongodb_uri) > 0 && length(var.tasky_secret_key) > 0)
-      error_message = "When tasky_enabled is true, tasky_mongodb_uri and tasky_secret_key must be non-empty. Enable Tasky only after supplying these values in tfvars or -var."
+      condition     = local.tasky_count == 0 || (length(local.tasky_mongodb_uri_effective) > 0 && length(local.tasky_secret_key_effective) >= 32)
+      error_message = "When tasky_enabled is true, either leave tasky_mongodb_uri and tasky_secret_key empty (Terraform will derive/generate) or set both with at least 32-char secret."
     }
   }
 
@@ -37,8 +52,8 @@ resource "kubernetes_secret_v1" "tasky_secret" {
 
   # Provider base64-encodes automatically; do not double-encode or the pod receives base64 string instead of URI
   data = {
-    MONGODB_URI = var.tasky_mongodb_uri
-    SECRET_KEY  = var.tasky_secret_key
+    MONGODB_URI = local.tasky_mongodb_uri_effective
+    SECRET_KEY  = local.tasky_secret_key_effective
   }
 
   type = "Opaque"
@@ -101,7 +116,7 @@ resource "kubernetes_deployment_v1" "tasky" {
         labels = { app = "tasky" }
         # Change when credentials change so pods roll and pick up new secret
         annotations = {
-          "tasky/credentials-hash" = substr(sha256("${var.tasky_mongodb_uri}${var.tasky_secret_key}"), 0, 16)
+          "tasky/credentials-hash" = substr(sha256("${local.tasky_mongodb_uri_effective}${local.tasky_secret_key_effective}"), 0, 16)
         }
       }
 

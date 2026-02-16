@@ -9,10 +9,36 @@ environment = "wiz-exercise"
 # Optional: override backup bucket name (must be globally unique)
 # backup_bucket_name = "my-unique-mongodb-backups"
 
+# --- MongoDB (required for automated startup script) ---
+# Generate strong passwords, e.g.:
+#   openssl rand -base64 32
+# Do not commit terraform.tfvars; these are sensitive.
+mongodb_admin_password = "your-admin-password-min-32-chars"
+mongodb_app_password  = "your-app-password-min-32-chars"
+
 # --- Tasky app (Application Deployment via Terraform Kubernetes provider) ---
-# Tasky is opt-in (tasky_enabled defaults to false). Enable only after supplying tasky_mongodb_uri and tasky_secret_key.
-# See docs/APPLICATION_DEPLOYMENT_TERRAFORM_K8S.md.
-# tasky_enabled       = true
-# tasky_image         = ""   # optional; defaults to REGION-docker.pkg.dev/PROJECT_ID/tasky-repo/tasky:latest
-# tasky_mongodb_uri   = "mongodb://todouser:PASSWORD@MONGO_IP:27017/tododb"
-# tasky_secret_key    = "your-jwt-secret-at-least-32-characters"
+# Tasky is opt-in (tasky_enabled defaults to false). See docs/APPLICATION_DEPLOYMENT_TERRAFORM_K8S.md.
+# Leave tasky_mongodb_uri and tasky_secret_key empty to derive from this stack's MongoDB VM and a generated JWT
+# (enables terraform destroy / apply without hardcoded values). Override only if using an external MongoDB.
+# tasky_enabled     = true
+# tasky_image       = ""   # optional; defaults to REGION-docker.pkg.dev/PROJECT_ID/tasky-repo/tasky:latest
+# tasky_mongodb_uri = ""   # optional; empty = use terraform output mongodb_connection_string
+# tasky_secret_key  = ""   # optional; empty = Terraform generates a 32-char JWT secret
+
+# --- Argo CD GitOps (alternative to tasky_enabled) ---
+# Use Argo CD to deploy Tasky from Git (kubernetes/ path). Set tasky_enabled=false when using this.
+# Destroy/recreate: terraform destroy + apply works; Cloud NAT (network.tf) enables private GKE
+# nodes to pull Argo CD images. Ensure argocd_git_repo_url is accessible from the cluster.
+# argocd_enabled       = true
+# argocd_git_repo_url  = "https://github.com/your-org/Wiz"   # or git@github.com:your-org/Wiz.git
+# argocd_git_revision  = "main"
+
+# --- GCP Security Tooling (optional) ---
+# Monitoring alerts (firewall/bucket IAM) are gated; default false so apply succeeds without alert roles.
+# Set to true only after re-running scripts/gcp-bootstrap.sh (or granting monitoring.alertPolicyEditor + monitoring.notificationChannelEditor to the automation SA).
+# enable_monitoring_alerts = true
+# Optional: email for Cloud Monitoring alert notifications (used when enable_monitoring_alerts is true).
+# alert_notification_email = "you@example.com"
+# Require OS Login defaults to false (skipped by Terraform) for lab projects lacking orgpolicy.policyAdmin.
+# When you have org-level permission, set to true to enforce via Terraform; otherwise set the policy in Console.
+# enable_require_os_login = true

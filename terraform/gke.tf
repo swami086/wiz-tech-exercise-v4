@@ -26,6 +26,13 @@ resource "google_project_iam_member" "gke_node_monitoring_viewer" {
   member  = "serviceAccount:${google_service_account.gke_node.email}"
 }
 
+# Allow GKE nodes to pull Tasky image from Artifact Registry
+resource "google_project_iam_member" "gke_node_artifact_registry_reader" {
+  project = var.project_id
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${google_service_account.gke_node.email}"
+}
+
 resource "google_container_cluster" "primary" {
   provider = google-beta
 

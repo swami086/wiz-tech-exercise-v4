@@ -15,7 +15,8 @@ This repository contains the implementation of the **Wiz Technical Exercise V4**
 |-----------|---------|
 | `terraform/` | Terraform configuration for GCP infrastructure |
 | `app/` | Sample todo application source and Dockerfile |
-| `kubernetes/` | Kubernetes manifests (Deployment, Service, Ingress) |
+| `kubernetes/` | Kubernetes manifests (Deployment, Service, Ingress); Kustomize for GitOps |
+| `argocd/` | Argo CD Application and AppProject manifests for GitOps |
 | `scripts/` | Automation scripts (e.g. GCP bootstrap, backups) |
 | `.github/workflows/` | GitHub Actions CI/CD workflows |
 | `docs/` | Documentation and setup guides |
@@ -41,10 +42,19 @@ This repository contains the implementation of the **Wiz Technical Exercise V4**
    Create the repo (e.g. from this clone), push, then enable branch protection, required reviews, status checks, Dependabot, and secret scanning. See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md).
 
 3. **Infrastructure**  
-   In the `terraform/` directory, configure the GCS backend and run `terraform init` and `terraform apply`. See [docs/INFRASTRUCTURE_DEPLOYMENT.md](docs/INFRASTRUCTURE_DEPLOYMENT.md) for the manual deployment phase.
+   In the `terraform/` directory, configure the GCS backend and run `terraform init` and `terraform apply`.
+
+   - Copy `terraform/terraform.tfvars.example` to `terraform/terraform.tfvars` and set `project_id` and all required variables.
+   - **MongoDB (automated, no manual SSH):** You must supply MongoDB passwords in `terraform.tfvars`; the MongoDB VM is configured entirely by a Terraform startup script on first boot (no manual SSH or script run needed). Generate strong passwords, for example:
+     ```bash
+     openssl rand -base64 32   # use once for mongodb_admin_password
+     openssl rand -base64 32   # use once for mongodb_app_password
+     ```
+     Set in `terraform.tfvars`: `mongodb_admin_password` and `mongodb_app_password`. The startup script installs MongoDB 4.4, enables auth, creates the `tododb` database and app user, and schedules daily backups to GCS. See [docs/MONGODB_SETUP_AND_BACKUP.md](docs/MONGODB_SETUP_AND_BACKUP.md).
+   - See [docs/INFRASTRUCTURE_DEPLOYMENT.md](docs/INFRASTRUCTURE_DEPLOYMENT.md) for full steps.
 
 4. **Application**  
-   Build the todo app image, push to a container registry, and deploy to GKE using manifests in `kubernetes/` (see later tickets).
+   Build the todo app image, push to a container registry, and deploy to GKE using manifests in `kubernetes/` (see later tickets). Use `terraform output -raw mongodb_connection_string` for the app MongoDB URI.
 
 ## Security Controls (Repo)
 
@@ -66,9 +76,14 @@ These are introduced for the exercise and documented in code:
 
 - [GCP Bootstrap](docs/GCP_BOOTSTRAP.md) – Enable APIs, service account, Terraform state bucket  
 - [GitHub Setup](docs/GITHUB_SETUP.md) – Repo creation and security controls  
-- [Infrastructure Deployment](docs/INFRASTRUCTURE_DEPLOYMENT.md) – Manual Terraform deploy (VPC, GKE, VM, bucket)  
+- [Infrastructure Deployment](docs/INFRASTRUCTURE_DEPLOYMENT.md) – Terraform deploy (VPC, GKE, VM, bucket)  
+- [MongoDB Setup & Backup](docs/MONGODB_SETUP_AND_BACKUP.md) – **Automated** MongoDB install via startup script (no manual SSH); supply `mongodb_admin_password` and `mongodb_app_password` in `terraform.tfvars` (generate with `openssl rand -base64 32`)  
 - [Flow 1 Validation](docs/VALIDATION_FLOW1.md) – Initial setup checklist  
 - [Flow 2 Validation](docs/VALIDATION_FLOW2.md) – Infrastructure deployment checklist  
+- [Infrastructure Reproducibility & Lifecycle](docs/INFRASTRUCTURE_REPRODUCIBILITY_AND_LIFECYCLE.md) – Validate no drift (`terraform plan`) and optional destroy/re-apply; use `./scripts/validate-terraform-lifecycle.sh plan`  
+- [GCP Security Tooling](docs/GCP_SECURITY_TOOLING.md) – Audit logs, SCC, Org Policy, Monitoring alerts, and security posture  
+- [Demo Execution & Presentation Runbook](docs/DEMO_EXECUTION_AND_PRESENTATION_RUNBOOK.md) – Structured end-to-end CI/CD demo: `./Demo/demo-cicd-end-to-end.sh`  
+- [Argo CD GitOps Integration](docs/ARGO_CD_GITOPS_INTEGRATION.md) – Deploy Tasky via Argo CD from Git; install with `./scripts/install-argocd.sh`  
 
 ## License
 

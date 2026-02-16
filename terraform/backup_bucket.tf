@@ -9,9 +9,10 @@ locals {
 }
 
 resource "google_storage_bucket" "mongodb_backups" {
-  name     = local.backup_bucket_name
-  project  = var.project_id
-  location = var.region
+  name          = local.backup_bucket_name
+  project       = var.project_id
+  location      = var.region
+  force_destroy = true # allow destroy to delete bucket with objects (e.g. clean recreate)
 
   # Uniform bucket-level access (required for IAM-based public access)
   uniform_bucket_level_access = true

@@ -29,24 +29,16 @@ To only re-run verification without restarting the deployment:
 
 ## Step-by-Step (Ticket-Aligned)
 
-### 1. Artifact Registry repository
+### 1. Artifact Registry repository (Terraform-managed)
 
-The script `build-and-push-tasky.sh` creates the repository if it does not exist:
+The Artifact Registry repository is managed by Terraform in `terraform/artifact_registry.tf`. Run `terraform apply` before the first image push so the repository exists. The build script `build-and-push-tasky.sh` uses Terraform outputs when available and will fail with a clear message if the repo is missing.
 
-- **Repository:** `tasky-repo`
-- **Location:** `us-central1`
+- **Repository ID:** configurable via `artifact_registry_repository_id` (default: `tasky-repo`)
+- **Location:** `artifact_registry_location` or `region` (default: `us-central1`)
 - **Format:** Docker  
 - **Description:** "Tasky application container images for Wiz Exercise"
 
-Manual alternative:
-
-```bash
-gcloud artifacts repositories create tasky-repo \
-  --repository-format=docker \
-  --location=us-central1 \
-  --project=wizdemo-487311 \
-  --description="Tasky application container images for Wiz Exercise"
-```
+To create the repo manually (if not using Terraform): run the same `gcloud artifacts repositories create` command as in the deploy workflow, or apply Terraform first.
 
 ### 2. Docker authentication
 
@@ -142,6 +134,8 @@ Capture:
 - **Load Balancer IP pending:** GCE Ingress can take 5–10 minutes; check `kubectl describe ingress -n tasky`.
 - **502 / unhealthy backend:** Wait for readiness/liveness; check `kubectl describe pod -n tasky` and app logs.
 - **MongoDB connection:** Tasky uses `tasky_mongodb_uri` from Terraform (e.g. `mongodb://todouser:***@10.0.2.2:27017/tododb`). Ensure the MongoDB VM is up and reachable from the GKE cluster.
+
+For a full list of error scenarios and recovery steps (Terraform, CI gates, deployment, Argo CD, security alerts), see [ERROR_TESTING_AND_RECOVERY_PROCEDURES.md](ERROR_TESTING_AND_RECOVERY_PROCEDURES.md).
 
 ## Related
 

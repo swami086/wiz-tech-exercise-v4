@@ -80,4 +80,6 @@ gsutil iam get gs://$(terraform output -raw mongodb_backup_bucket)
 
 When all items are checked, Flow 2 (Infrastructure Deployment) is complete. Proceed to **MongoDB Setup & Backup Automation**.
 
-See also **[FLOW2_VERIFICATION_CHECKLIST.md](FLOW2_VERIFICATION_CHECKLIST.md)** for acceptance-criteria mapping and quick commands (project wizdemo-487311).
+See also:
+- **[FLOW2_VERIFICATION_CHECKLIST.md](FLOW2_VERIFICATION_CHECKLIST.md)** – Acceptance-criteria mapping and quick commands (project wizdemo-487311).
+- **[INFRASTRUCTURE_REPRODUCIBILITY_AND_LIFECYCLE.md](INFRASTRUCTURE_REPRODUCIBILITY_AND_LIFECYCLE.md)** – Lifecycle validation (no drift) and reproducibility (destroy + re-apply); run `./scripts/validate-terraform-lifecycle.sh plan` from repo root to confirm no drift.

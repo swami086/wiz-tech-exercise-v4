@@ -35,11 +35,12 @@ fi
 echo "=== Terraform deploy (project: $GCP_PROJECT_ID) ==="
 cd "$TERRAFORM_DIR"
 
-# Ensure tfvars exists
+# Ensure tfvars exists (MongoDB passwords required; tasky_mongodb_uri/tasky_secret_key can be left empty for derive/generate)
 if [[ ! -f terraform.tfvars ]]; then
   echo "Creating terraform.tfvars from example..."
   sed "s/your-cloudlabs-project-id/${GCP_PROJECT_ID}/" terraform.tfvars.example > terraform.tfvars
-  echo "  Edit terraform/terraform.tfvars if you need to change region/zone."
+  echo "  Edit terraform/terraform.tfvars: set mongodb_admin_password and mongodb_app_password (min 32 chars)."
+  echo "  Leave tasky_mongodb_uri and tasky_secret_key empty for Terraform-managed MongoDB and generated JWT."
 fi
 
 BUCKET="${GCP_PROJECT_ID}-tfstate-wiz-exercise"
@@ -49,10 +50,10 @@ terraform init \
   -backend-config="prefix=terraform/state"
 
 echo "Planning..."
-terraform plan -out=tfplan
+terraform plan -out=tfplan -input=false
 
 echo "Applying..."
-terraform apply tfplan
+terraform apply -input=false tfplan
 
 echo ""
 echo "=== kubectl access ==="
