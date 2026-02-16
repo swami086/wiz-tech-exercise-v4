@@ -136,6 +136,21 @@ jobs:
               argocd/application-tasky.yaml | kubectl apply -n argocd -f -
         continue-on-error: true
 
+      - name: Wait for Argo CD to create deployment (sync)
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Waiting for deployment/tasky to exist (Argo CD sync)..."
+          for i in $(seq 1 24); do
+            if kubectl get deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" &>/dev/null; then
+              echo "Deployment found."
+              exit 0
+            fi
+            echo "  ($i/24) waiting 10s..."
+            sleep 10
+          done
+          echo "::warning::Deployment not found after 4m; Argo CD may still be syncing. Rollout step may fail."
+        continue-on-error: true
+
       - name: Trigger Kubernetes deployment (rollout new image)
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
