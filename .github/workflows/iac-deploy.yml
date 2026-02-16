@@ -71,39 +71,47 @@ jobs:
 
     steps:
       - name: Check deploy secrets
+        id: check_secrets
         run: |
           if [ -z "$MONGODB_ADMIN_PASSWORD" ] || [ -z "$MONGODB_APP_PASSWORD" ]; then
-            echo "::error::MONGODB_ADMIN_PASSWORD and MONGODB_APP_PASSWORD must be set (Settings → Secrets). At least 32 chars each."
-            exit 1
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "::notice::MONGODB_ADMIN_PASSWORD and MONGODB_APP_PASSWORD not set in this repo — skipping Terraform deploy (validate still passed). Add these secrets to run deploy from this repo, or use the wiz-iac repo for IaC deploy."
+            exit 0
           fi
           if [ ${#MONGODB_ADMIN_PASSWORD} -lt 32 ] || [ ${#MONGODB_APP_PASSWORD} -lt 32 ]; then
             echo "::error::Each MongoDB secret must be at least 32 characters."
             exit 1
           fi
+          echo "skip=false" >> $GITHUB_OUTPUT
         env:
           MONGODB_ADMIN_PASSWORD: ${{ secrets.MONGODB_ADMIN_PASSWORD }}
           MONGODB_APP_PASSWORD: ${{ secrets.MONGODB_APP_PASSWORD }}
 
       - name: Checkout
+        if: steps.check_secrets.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
+        if: steps.check_secrets.outputs.skip != 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
+        if: steps.check_secrets.outputs.skip != 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Setup Terraform
+        if: steps.check_secrets.outputs.skip != 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.5.0"
           terraform_wrapper: false
 
       - name: Terraform Init (GCS backend)
+        if: steps.check_secrets.outputs.skip != 'true'
         run: |
           terraform init -input=false \
             -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
@@ -111,9 +119,11 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Install GKE auth plugin (for Terraform null_resource kubectl)
+        if: steps.check_secrets.outputs.skip != 'true'
         run: gcloud components install gke-gcloud-auth-plugin --quiet
 
       - name: Terraform Plan
+        if: steps.check_secrets.outputs.skip != 'true'
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
           TF_VAR_mongodb_admin_password: ${{ secrets.MONGODB_ADMIN_PASSWORD }}
@@ -122,10 +132,12 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Apply
+        if: steps.check_secrets.outputs.skip != 'true'
         run: terraform apply -input=false -auto-approve tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Get application URL (after Argo CD sync)
+        if: steps.check_secrets.outputs.skip != 'true'
         run: |
           gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
           GKE_NAME=$(terraform output -raw gke_cluster_name 2>/dev/null || echo "wiz-exercise-gke")
@@ -144,3 +156,9 @@ jobs:
           echo "Run the **Phase 1 CI Gates** workflow to build/push image and deploy; app URL will appear there." >> $GITHUB_STEP_SUMMARY
         working-directory: ${{ env.TF_WORKING_DIR }}
         continue-on-error: true
+
+      - name: Deploy skipped (no MongoDB secrets)
+        if: steps.check_secrets.outputs.skip == 'true'
+        run: |
+          echo "## Deploy skipped" >> $GITHUB_STEP_SUMMARY
+          echo "MONGODB_ADMIN_PASSWORD and MONGODB_APP_PASSWORD are not set in this repo. IaC **validate** passed. To run Terraform deploy from this repo, add these secrets (min 32 chars each). Otherwise use the **wiz-iac** repo for full IaC deploy."
