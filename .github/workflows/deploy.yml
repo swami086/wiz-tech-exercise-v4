@@ -107,6 +107,22 @@ jobs:
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: gcloud components install gke-gcloud-auth-plugin --quiet
 
+      - name: Check cluster readiness (Argo CD and tasky namespace)
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: |
+          MISSING=""
+          if ! kubectl get crd applications.argoproj.io &>/dev/null; then
+            MISSING="${MISSING}- Argo CD is not installed (Application CRD missing). "
+          fi
+          if ! kubectl get namespace "${{ env.TASKY_NAMESPACE }}" &>/dev/null; then
+            MISSING="${MISSING}- Namespace '${{ env.TASKY_NAMESPACE }}' not found. "
+          fi
+          if [ -n "$MISSING" ]; then
+            echo "::error::Cluster not ready for app deploy. $MISSING Run the IaC pipeline first (main repo iac-deploy.yml with MongoDB secrets, or wiz-iac with argocd_enabled=true) to create the GKE cluster, install Argo CD, and create the tasky namespace."
+            exit 1
+          fi
+          echo "Argo CD and tasky namespace present."
+
       - name: Apply Argo CD Application (app repo deploys the app)
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
