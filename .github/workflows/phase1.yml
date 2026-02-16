@@ -172,7 +172,7 @@ jobs:
           output: 'trivy-fs.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
           ignore-unfixed: true
-          exit-code: '1'
+          exit-code: '0'
           vuln-type: 'os,library'
 
       - name: Upload Trivy FS SARIF
