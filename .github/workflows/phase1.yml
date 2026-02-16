@@ -1,5 +1,6 @@
 # Phase 1 CI Gates – all scans must succeed before deploy-gate runs.
-# deploy-gate: build, verify; on main also push to GCP Artifact Registry and trigger Argo CD / rollout.
+# Demo flow (on main): build image → push to GCP Artifact Registry (tasky:SHA + tasky:latest)
+# → rollout restart so Argo CD–managed deployment pulls new image → output application URL in job summary.
 name: Phase 1 CI Gates
 
 on:
@@ -170,7 +171,8 @@ jobs:
           format: 'sarif'
           output: 'trivy-fs.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          exit-code: '0'
+          ignore-unfixed: true
+          exit-code: '1'
           vuln-type: 'os,library'
 
       - name: Upload Trivy FS SARIF
@@ -239,11 +241,30 @@ jobs:
         run: |
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" \
             --region "${{ env.GKE_REGION }}" --project "${{ secrets.GCP_PROJECT_ID }}"
-        continue-on-error: true
 
       - name: Trigger Argo CD deployment (rollout new image)
         if: github.ref == 'refs/heads/main'
         run: |
-          kubectl rollout restart deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" || true
-          kubectl rollout status deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" --timeout=120s || true
+          kubectl rollout restart deployment/tasky -n "${{ env.TASKY_NAMESPACE }}"
+          kubectl rollout status deployment/tasky -n "${{ env.TASKY_NAMESPACE }}" --timeout=120s
+
+      - name: Get application URL
+        id: app-url
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "## Application URL" >> $GITHUB_STEP_SUMMARY
+          for i in $(seq 1 12); do
+            IP=$(kubectl get ingress -n "${{ env.TASKY_NAMESPACE }}" tasky -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+            if [ -n "$IP" ]; then
+              URL="http://$IP"
+              echo "**Live URL:** [$URL]($URL)" >> $GITHUB_STEP_SUMMARY
+              echo "Application is available at: $URL"
+              echo "url=$URL" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Waiting for ingress IP... ($i/12)"
+            sleep 15
+          done
+          echo "Ingress IP not yet assigned (GCP load balancer can take 5–10 min). Check with: \`kubectl get ingress -n tasky\`" >> $GITHUB_STEP_SUMMARY
+          echo "::notice::Ingress may still be provisioning. Run: kubectl get ingress -n tasky"
         continue-on-error: true
