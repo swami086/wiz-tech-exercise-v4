@@ -182,28 +182,29 @@ jobs:
         run: terraform apply -input=false -auto-approve tfplan
         working-directory: ${{ env.TF_WORKING_DIR }}
 
-      - name: Get application URL (after Argo CD sync)
+      - name: Get application URL (after app is deployed)
         if: steps.check_secrets.outputs.skip != 'true'
         run: |
           gcloud components install gke-gcloud-auth-plugin --quiet 2>/dev/null || true
           GKE_NAME=$(terraform output -raw gke_cluster_name 2>/dev/null || echo "wiz-exercise-gke")
           GKE_REGION=$(terraform output -raw region 2>/dev/null || echo "us-central1")
           gcloud container clusters get-credentials "$GKE_NAME" --region "$GKE_REGION" --project "${{ secrets.GCP_PROJECT_ID }}" 2>/dev/null || true
-          echo "## Application URL (after app pipeline)" >> $GITHUB_STEP_SUMMARY
-          for i in $(seq 1 6); do
+          echo "## Application URL" >> $GITHUB_STEP_SUMMARY
+          for i in $(seq 1 12); do
             IP=$(kubectl get ingress -n tasky tasky -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
             if [ -n "$IP" ]; then
               echo "**Live URL:** http://$IP" >> $GITHUB_STEP_SUMMARY
+              echo "App is available at: http://$IP"
               exit 0
             fi
-            echo "Waiting for ingress IP... ($i/6)"
+            echo "Waiting for ingress IP... ($i/12)"
             sleep 15
           done
-          echo "Run the **Phase 1 CI Gates** workflow to build/push image and deploy; app URL will appear there." >> $GITHUB_STEP_SUMMARY
+          echo "No Ingress IP yet. Run the **Deploy (Build, Push, and K8s Deploy)** workflow (Actions → Deploy → Run workflow); the **Live URL** will appear in that run's job summary." >> $GITHUB_STEP_SUMMARY
         working-directory: ${{ env.TF_WORKING_DIR }}
         continue-on-error: true
 
-      - name: Deploy skipped (no MongoDB secrets)
+      - name: Summary when deploy skipped (no MongoDB secrets)
         if: steps.check_secrets.outputs.skip == 'true'
         run: |
           echo "## Deploy skipped" >> $GITHUB_STEP_SUMMARY
