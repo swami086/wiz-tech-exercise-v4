@@ -79,7 +79,8 @@ for role in \
   roles/monitoring.alertPolicyEditor \
   roles/monitoring.notificationChannelEditor \
   roles/artifactregistry.admin \
-  roles/iam.serviceAccountAdmin; do
+  roles/iam.serviceAccountAdmin \
+  roles/serviceusage.serviceUsageAdmin; do
   gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$role" \

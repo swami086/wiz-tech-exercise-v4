@@ -119,7 +119,7 @@ create_tododb_and_app_user() {
   mongo $mongo_auth --quiet --eval "
     db = db.getSiblingDB('tododb');
     db.tasks.insertOne({ title: 'Welcome task', completed: false, createdAt: new Date() });
-    if (db.tasks.countDocuments() !== 1) { throw new Error('Sample document insert failed'); }
+    if (db.tasks.countDocuments({}) !== 1) { throw new Error('Sample document insert failed'); }
   " || { echo "Error: Failed to create tododb or insert sample document." >&2; exit 1; }
 
   mongo $mongo_auth --quiet --eval "
@@ -166,7 +166,10 @@ setup_backup_cron() {
   cat > "$backup_script" << 'BACKUPSCRIPT'
 #!/usr/bin/env bash
 # Daily MongoDB dump and upload to GCS. Uses VM service account (no key needed).
+# PATH set for cron (minimal env); log to file for debugging.
 set -euo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:/opt/google-cloud-sdk/bin:${PATH:-}"
+
 BUCKET="{{GCS_BACKUP_BUCKET}}"
 CREDS_FILE="/etc/mongodb-backup-credentials.conf"
 DUMP_DIR="/tmp/mongodb-backup-$$"
@@ -190,8 +193,12 @@ BACKUPSCRIPT
   sed -i "s|{{GCS_BACKUP_BUCKET}}|$GCS_BACKUP_BUCKET|g" "$backup_script"
   chmod +x "$backup_script"
 
-  (crontab -l 2>/dev/null | grep -v mongodb-backup-to-gcs || true; echo "0 2 * * * $backup_script") | crontab -
-  echo "[*] Cron set: daily at 02:00 (0 2 * * *)."
+  (crontab -l 2>/dev/null | grep -v mongodb-backup-to-gcs || true; echo "0 * * * * $backup_script") | crontab -
+  echo "[*] Cron set: every hour at minute 0 (0 * * * *)."
+
+  # Run one backup immediately so the bucket is not empty after first boot
+  echo "[*] Running initial backup to GCS..."
+  $backup_script || echo "[!] Initial backup failed; check $LOG. Cron will retry daily."
 }
 
 # --- Ensure MongoDB is listening on 27017 (fixes missing/failed systemd unit) ---
@@ -237,9 +244,10 @@ UNIT
 install_mongodb
 enable_auth
 configure_bind_ip
-create_tododb_and_app_user
+# Backup cron is required; run it even if tododb/sample data fails (e.g. shell compatibility).
 install_gsutil
 setup_backup_cron
+create_tododb_and_app_user || { echo "[!] Failed to create tododb/sample data; backup cron is active." >&2; }
 ensure_mongod_listening
 echo "[*] MongoDB setup and backup automation complete."
 echo "[*] App user: $MONGO_APP_USER (password in /etc/mongodb-app-credentials.conf on this VM)."

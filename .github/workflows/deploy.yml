@@ -1,6 +1,11 @@
 # Pipeline 2: Build & push application container and trigger Kubernetes deployment.
 # Runs ONLY after Phase 1 CI Gates succeed (workflow_run) or on manual trigger – avoids duplicate deploy with Phase 1.
 # Phase 1 deploy-gate does build+verify only; this workflow does the actual push and K8s rollout.
+#
+# Scope: This pipeline deploys ONLY the application (Tasky). It must NOT create or destroy the
+# database (MongoDB). The database is provisioned by the IaC deploy pipeline (iac-deploy.yml);
+# this pipeline assumes it already exists and uses the connection details from the cluster Secret.
+#
 # Requires: GCP_SA_KEY, GCP_PROJECT_ID. Optional: GKE_CLUSTER_NAME, GKE_REGION.
 name: Deploy (Build, Push, and K8s Deploy)
 
@@ -45,6 +50,7 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      # Optional: ensure image repo exists (no database or other infra – DB is from IaC only).
       - name: Ensure Artifact Registry repo exists
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
@@ -107,7 +113,7 @@ jobs:
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: gcloud components install gke-gcloud-auth-plugin --quiet
 
-      - name: Check cluster readiness (Argo CD and tasky namespace)
+      - name: Check cluster readiness (Argo CD, tasky namespace, tasky-secret with MONGODB_URI)
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
         run: |
           MISSING=""
@@ -117,11 +123,16 @@ jobs:
           if ! kubectl get namespace "${{ env.TASKY_NAMESPACE }}" &>/dev/null; then
             MISSING="${MISSING}- Namespace '${{ env.TASKY_NAMESPACE }}' not found. "
           fi
+          if ! kubectl get secret tasky-secret -n "${{ env.TASKY_NAMESPACE }}" &>/dev/null; then
+            MISSING="${MISSING}- Secret 'tasky-secret' not found in namespace '${{ env.TASKY_NAMESPACE }}'. "
+          elif [ -z "$(kubectl get secret tasky-secret -n "${{ env.TASKY_NAMESPACE }}" -o jsonpath='{.data.MONGODB_URI}' 2>/dev/null)" ]; then
+            MISSING="${MISSING}- Secret 'tasky-secret' exists but has no MONGODB_URI key. "
+          fi
           if [ -n "$MISSING" ]; then
-            echo "::error::Cluster not ready for app deploy. $MISSING Run the IaC pipeline first (main repo iac-deploy.yml with MongoDB secrets, or wiz-iac with argocd_enabled=true) to create the GKE cluster, install Argo CD, and create the tasky namespace."
+            echo "::error::Cluster not ready for app deploy. $MISSING Run the IaC pipeline first (iac-deploy.yml) to create the GKE cluster, install Argo CD, create the tasky namespace, and provision the database and tasky-secret (with MONGODB_URI)."
             exit 1
           fi
-          echo "Argo CD and tasky namespace present."
+          echo "Argo CD, tasky namespace, and tasky-secret (MONGODB_URI) present."
 
       - name: Apply Argo CD Application (app repo deploys the app)
         if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'

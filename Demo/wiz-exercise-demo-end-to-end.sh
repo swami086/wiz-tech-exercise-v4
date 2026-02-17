@@ -148,7 +148,7 @@ phase1_vm_mongodb() {
   else
     warn "Bucket gs://$BACKUP_BUCKET not found or not accessible."
   fi
-  info "Backup automation: VM startup script installs cron '0 2 * * *' (daily 02:00) – see terraform/scripts/mongodb-startup.sh.tpl."
+  info "Backup automation: VM startup script installs cron '0 * * * *' (every hour) – see terraform/scripts/mongodb-startup.sh.tpl."
   ok "Daily backup cron configured on VM."
 
   info "Bucket public read + public listing (intentional misconfiguration)..."

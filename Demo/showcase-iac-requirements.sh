@@ -177,7 +177,7 @@ check_vm_mongodb() {
   else
     fail "Bucket $BACKUP_GS not found."
   fi
-  echo "   Daily cron on VM: 0 2 * * * (02:00) – terraform/scripts/mongodb-startup.sh.tpl setup_backup_cron."
+  echo "   Hourly cron on VM: 0 * * * * – terraform/scripts/mongodb-startup.sh.tpl setup_backup_cron."
 
   echo ""
   echo "1.6 Object storage: public read and public listing"

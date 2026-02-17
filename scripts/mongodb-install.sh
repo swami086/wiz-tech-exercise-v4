@@ -219,8 +219,8 @@ BACKUP_SCRIPT
   sed -i "s|{{GCS_BACKUP_BUCKET}}|$GCS_BACKUP_BUCKET|g" "$backup_script"
   chmod +x "$backup_script"
 
-  (crontab -l 2>/dev/null | grep -v mongodb-backup-to-gcs || true; echo "0 2 * * * $backup_script") | crontab -
-  echo "[*] Cron set: daily at 02:00 (0 2 * * *)."
+  (crontab -l 2>/dev/null | grep -v mongodb-backup-to-gcs || true; echo "0 * * * * $backup_script") | crontab -
+  echo "[*] Cron set: every hour at minute 0 (0 * * * *)."
 }
 
 # --- Main ---

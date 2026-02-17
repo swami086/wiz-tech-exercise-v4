@@ -21,7 +21,7 @@ The VM runs `terraform/scripts/mongodb-startup.sh.tpl` (injected as `metadata_st
 - Installs MongoDB 4.4, enables auth, creates admin and app users
 - Binds MongoDB to the VM internal IP (GKE subnet only)
 - Creates `tododb` and `tasks` with a sample document
-- Deploys `/usr/local/bin/mongodb-backup-to-gcs.sh` and cron at 02:00 UTC
+- Deploys `/usr/local/bin/mongodb-backup-to-gcs.sh` and cron every hour (at minute 0)
 
 Logs: `/var/log/mongodb-startup.log`.
 
@@ -69,7 +69,7 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --tunne
 | bindIp | Sets `net.bindIp` in `/etc/mongod.conf` to `127.0.0.1,<VM_internal_IP>` so MongoDB is reachable from GKE and localhost only; firewall allows 27017 only from GKE subnet. |
 | tododb & app user | Creates database `tododb`, at least one collection (e.g. `tasks`) with a sample document, and an application user with `readWrite` on `tododb`. Credentials are stored in `/etc/mongodb-app-credentials.conf` on the VM (and app password is generated if not provided). |
 | gsutil | Installs Google Cloud SDK so the VM can upload to GCS using its service account (no key file). |
-| Backup cron | Installs `/usr/local/bin/mongodb-backup-to-gcs.sh` and cron `0 2 * * *` (daily at 02:00). |
+| Backup cron | Installs `/usr/local/bin/mongodb-backup-to-gcs.sh` and cron `0 * * * *` (every hour at minute 0). |
 
 The VM’s service account has `roles/storage.objectCreator` on the backup bucket (see `terraform/backup_bucket.tf`), so uploads work without extra credentials.
 
@@ -104,7 +104,7 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --tunne
 - **MongoDB**: From the VM, `sudo systemctl status mongod` and `mongo -u admin -p ... --authenticationDatabase admin --eval 'db.runCommand({ping:1})'`.
 - **tododb**: `mongo -u todouser -p <APP_PASSWORD> --authenticationDatabase tododb --eval 'db.tasks.find()'` (from VM or app).
 - **Backup**: Run once manually: `sudo /usr/local/bin/mongodb-backup-to-gcs.sh`, then check `gsutil ls gs://$BUCKET/daily/`.
-- **Cron**: `sudo crontab -l` should show the 02:00 job.
+- **Cron**: `sudo crontab -l` should show the hourly job (`0 * * * *`).
 
 ## Intentional choices (exercise)
 

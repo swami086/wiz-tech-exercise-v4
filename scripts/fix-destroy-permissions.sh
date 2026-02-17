@@ -32,4 +32,12 @@ gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
   --condition=None \
   --quiet
 
+echo "Granting roles/serviceusage.serviceUsageAdmin (allows disable APIs on destroy)..."
+gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" \
+  --role="roles/serviceusage.serviceUsageAdmin" \
+  --condition=None \
+  --quiet
+
 echo "Done. Re-run the IaC Destroy workflow (Actions → IaC Destroy → Run workflow)."
+echo "If you see 'subnetwork already in use', wait 2–3 min for GKE/VM to finish deleting, then run Destroy again."
