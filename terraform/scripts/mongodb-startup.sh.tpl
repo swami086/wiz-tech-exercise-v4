@@ -168,7 +168,7 @@ setup_backup_cron() {
 # Daily MongoDB dump and upload to GCS. Uses VM service account (no key needed).
 # PATH set for cron (minimal env); log to file for debugging.
 set -euo pipefail
-export PATH="/usr/local/bin:/usr/bin:/bin:/opt/google-cloud-sdk/bin:${PATH:-}"
+export PATH="/usr/local/bin:/usr/bin:/bin:/opt/google-cloud-sdk/bin:$${PATH:-}"
 
 BUCKET="{{GCS_BACKUP_BUCKET}}"
 CREDS_FILE="/etc/mongodb-backup-credentials.conf"
